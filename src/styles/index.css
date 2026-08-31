@@ -690,7 +690,79 @@ html, body, #root {
 }
 
 @media (max-height: 520px) {
-  .arcade-question-header { top: 6px; }
+  .arcade-question-header { top: 6px; padding: 4px 12px; }
   .top-utility-bar { top: 6px; left: 6px; }
   .score-panel { top: 6px; right: 6px; }
+
+  /* Compact Overlay Cards for Mobile Landscape */
+  .overlay-card {
+    padding: 14px 20px !important;
+    width: min(94vw, 440px) !important;
+    max-height: 94dvh !important;
+    overflow-y: auto !important;
+    border-radius: 16px !important;
+  }
+  .overlay-card > div[style*="margin-bottom: 24px"],
+  .overlay-card > div[style*="margin-bottom: 22px"],
+  .overlay-card > div[style*="margin-bottom: 18px"] {
+    margin-bottom: 8px !important;
+  }
+  .overlay-title {
+    font-size: 18px !important;
+    margin-bottom: 4px !important;
+  }
+  .overlay-subtitle {
+    font-size: 12px !important;
+    margin-bottom: 8px !important;
+  }
+  .loading-radar-ring {
+    width: 40px !important;
+    height: 40px !important;
+    margin: 0 auto 6px auto !important;
+  }
+  .loading-radar-core {
+    font-size: 16px !important;
+  }
+  .control-guide-card {
+    padding: 6px 4px !important;
+    border-radius: 8px !important;
+  }
+  .control-guide-card > div:first-child {
+    font-size: 14px !important;
+    margin-bottom: 0 !important;
+  }
+  .guide-title {
+    font-size: 9px !important;
+  }
+  .guide-desc {
+    font-size: 10px !important;
+  }
+  .btn {
+    min-height: 38px !important;
+    padding: 8px 16px !important;
+    font-size: 11px !important;
+  }
+  .btn--start {
+    padding: 10px 18px !important;
+    font-size: 13px !important;
+    border-radius: 12px !important;
+  }
+  .stats-grid {
+    margin: 8px 0 !important;
+    gap: 6px !important;
+  }
+  .stat-item {
+    padding: 6px 8px !important;
+  }
+  .stat-value {
+    font-size: 16px !important;
+  }
+  .btn-row {
+    margin-top: 8px !important;
+    gap: 8px !important;
+  }
+  .hint-modal-body {
+    padding: 10px 14px !important;
+    font-size: 13px !important;
+  }
 }

@@ -129,8 +129,7 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
       const sinS  = Math.sin(slope);
 
       // Fire trigger
-      if (fireSignal.current && !hasFired.current) {
-        hasFired.current    = true;
+      if (fireSignal.current) {
         fireSignal.current  = false;
         recoilTimer.current = 0.25;
 

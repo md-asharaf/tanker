@@ -1,55 +1,38 @@
 import {
-  Suspense, useRef, useState, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle,
+  useRef,
+  useState,
+  useCallback,
+  useMemo,
+  useEffect,
+  forwardRef,
+  useImperativeHandle,
+  Suspense,
 } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { Terrain } from './scene/Terrain';
+import { Terrain, getTerrainHeight } from './scene/Terrain';
 import { Environment } from './scene/Environment';
 import { PlayerTank, type PlayerTankHandle } from './entities/PlayerTank';
 import { EnemyTank, type EnemyTankHandle } from './entities/EnemyTank';
 import { Projectile } from './entities/Projectile';
 import { Explosion } from './entities/Explosion';
-import { useGameStore } from './gameStore';
 import { useKeyboard, type KeyState } from '../controls/useKeyboard';
+import { useGameStore } from './gameStore';
+import { GAME_CONFIG } from './gameConfig';
 import { AudioManager } from '../audio/AudioManager';
 import { randFloat } from '../utils/math';
 import type { TankTarget } from './gameTypes';
-import { GAME_CONFIG } from './gameConfig';
-
-function createTrajectoryGroup(): THREE.Group {
-  const group = new THREE.Group();
-  const count = GAME_CONFIG.trajectory.dots;
-  for (let i = 0; i < count; i++) {
-    const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.14, 8, 8),
-      new THREE.MeshBasicMaterial({ color: '#ffea00', transparent: true, opacity: 0.85 - i * 0.08 })
-    );
-    group.add(mesh);
-  }
-  return group;
-}
 
 // ─────────────────────────────────────────────────────────────────
-//  Types
+//  Public handle exposed by GameScene
 // ─────────────────────────────────────────────────────────────────
-interface ProjectileState {
-  id:       number;
-  origin:   THREE.Vector3;
-  velocity: THREE.Vector3;
-}
-type ExplosionItem = {
-  id:   number;
-  pos:  THREE.Vector3;
-  type: 'tank' | 'terrain';
-};
-
 export interface GameSceneHandle {
-  /** Let App push mobile key overrides into the scene */
-  setMobileKeys: (keys: Partial<KeyState>) => void;
-  /** Let App push a cannon angle update (from touch drag) */
+  /** Update external touch key state from UI overlay */
+  setMobileKeys:  (keys: Partial<KeyState>) => void;
+  /** Direct cannon elevation control */
   setCannonAngle: (angle: number) => void;
   /** Let App trigger fire */
-  triggerFire: () => void;
+  triggerFire:    () => void;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -61,30 +44,34 @@ interface SceneInnerProps {
   playerRef:      React.RefObject<PlayerTankHandle>;
 }
 
+interface ProjectileState {
+  id:       number;
+  origin:   THREE.Vector3;
+  velocity: THREE.Vector3;
+}
+
+interface ExplosionItem {
+  id:   number;
+  pos:  THREE.Vector3;
+  type: 'tank' | 'terrain';
+}
+
 function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
   const {
     phase, questions, currentQuestionIndex, questionSessionId,
     muted, resolveShot, advanceQuestion,
   } = useGameStore();
 
-  // Keyboard (merged with externalKeys via shared ref)
+  // Keyboard state
   const { keys: kbKeys, oneShot } = useKeyboard();
 
-  // Every frame, merge touch keys into the keyboard state so PlayerTank sees one unified ref
-  useFrame(() => {
-    kbKeys.current.left  = kbKeys.current.left  || externalKeys.current.left;
-    kbKeys.current.right = kbKeys.current.right || externalKeys.current.right;
-  });
+  // Unified keys ref combining keyboard + mobile touch controls every frame
+  const unifiedKeys = useRef<KeyState>({ left: false, right: false, up: false, down: false });
+  const tankFireSignal = useRef(false);
 
   const enemyRefs      = useRef<(EnemyTankHandle | null)[]>([]);
   const enemyTargetIds = useRef<string[]>([]);
   const hasResolved    = useRef(false);
-
-  // One-shot pending flags (consumed in useFrame, never cause re-renders)
-  const pendingPause = useRef(false);
-  const pendingMute  = useRef(false);
-  const pendingFire  = useRef(false);
-  const pendingHint  = useRef(false);
 
   const trajectoryGroupRef = useRef<THREE.Group>(createTrajectoryGroup());
 
@@ -122,6 +109,7 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
   // ── Per-question reset ───────────────────────────────────────
   useEffect(() => {
     hasResolved.current = false;
+    tankFireSignal.current = false;
     setActiveProjectile(null);
     setExplosions([]);
     enemyRefs.current = new Array(targets.length).fill(null);
@@ -132,38 +120,39 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
     AudioManager.setMuted(muted);
   }, [muted]);
 
-  // ── One-shot keyboard handling (runs every frame) ─────────────
+  // ── Frame Loop: Unified Controls & State Transitions ───────────
   useFrame(() => {
-    if (oneShot.current.fire)  { pendingFire.current  = true;  oneShot.current.fire  = false; }
-    if (oneShot.current.pause) { pendingPause.current = true;  oneShot.current.pause = false; }
-    if (oneShot.current.mute)  { pendingMute.current  = true;  oneShot.current.mute  = false; }
-    if (oneShot.current.hint)  { pendingHint.current  = true;  oneShot.current.hint  = false; }
+    // 1. Merge keyboard and mobile touch keys smoothly every frame
+    unifiedKeys.current.left  = Boolean(kbKeys.current.left  || externalKeys.current.left);
+    unifiedKeys.current.right = Boolean(kbKeys.current.right || externalKeys.current.right);
+    unifiedKeys.current.up    = Boolean(kbKeys.current.up    || externalKeys.current.up);
+    unifiedKeys.current.down  = Boolean(kbKeys.current.down  || externalKeys.current.down);
 
-    // External fire signal (from App's fire button / mobile fire button)
-    if (fireSignal.current) { pendingFire.current = true; fireSignal.current = false; }
-
-    const p = useGameStore.getState().phase;
-
-    if (pendingPause.current) {
-      pendingPause.current = false;
-      if (p === 'playing' || p === 'aiming')  useGameStore.getState().setPhase('paused');
-      else if (p === 'paused')               useGameStore.getState().setPhase('playing');
+    // 2. Consume keyboard hotkeys
+    if (oneShot.current.pause) {
+      oneShot.current.pause = false;
+      const p = useGameStore.getState().phase;
+      if (p === 'playing' || p === 'aiming') useGameStore.getState().setPhase('paused');
+      else if (p === 'paused')              useGameStore.getState().setPhase('playing');
     }
-    if (pendingMute.current) {
-      pendingMute.current = false;
+    if (oneShot.current.mute) {
+      oneShot.current.mute = false;
       useGameStore.getState().toggleMute();
     }
-    if (pendingHint.current) {
-      pendingHint.current = false;
+    if (oneShot.current.hint) {
+      oneShot.current.hint = false;
+      const p = useGameStore.getState().phase;
       if (p === 'playing' || p === 'aiming') useGameStore.getState().setHintVisible(true);
     }
-    if (pendingFire.current && !hasResolved.current) {
-      pendingFire.current = false;
+
+    // 3. Fire trigger from keyboard (Space) or mobile/touch button
+    if ((oneShot.current.fire || fireSignal.current) && !hasResolved.current) {
+      oneShot.current.fire = false;
+      fireSignal.current = false;
+      const p = useGameStore.getState().phase;
       if ((p === 'playing' || p === 'aiming') && !activeProjectile) {
-        fireSignal.current = false;
         useGameStore.getState().setPhase('firing');
-        // The PlayerTank reads fireSignal each frame — set it once more
-        fireSignal.current = true;
+        tankFireSignal.current = true;
       }
     }
   });
@@ -203,68 +192,75 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
     if (hasResolved.current) return;
     hasResolved.current = true;
 
-    const st = useGameStore.getState();
-    resolveShot('miss', st.questions[st.currentQuestionIndex].answer);
+    const st     = useGameStore.getState();
+    const answer = st.questions[st.currentQuestionIndex].answer;
+
+    resolveShot('miss', answer);
+    AudioManager.play('wrong');
     AudioManager.play('impact');
 
-    const pos = playerRef.current?.getPosition() ?? new THREE.Vector3();
-    setExplosions((e) => [...e, { id: explCounter.current++, pos, type: 'terrain' }]);
+    const projPos = activeProjectile ? activeProjectile.origin : new THREE.Vector3(0, getTerrainHeight(0), 0);
+    setExplosions((e) => [...e, { id: explCounter.current++, pos: projPos, type: 'terrain' }]);
+
     setTimeout(() => advanceQuestion(), GAME_CONFIG.feedback.displayTime);
-  }, [resolveShot, advanceQuestion, playerRef]);
+  }, [activeProjectile, resolveShot, advanceQuestion]);
 
   const removeExplosion = useCallback((id: number) => {
-    setExplosions((e) => e.filter((ex) => ex.id !== id));
+    setExplosions((prev) => prev.filter((e) => e.id !== id));
   }, []);
 
-  const isPlaying = ['playing', 'aiming', 'firing', 'resolving'].includes(phase);
-  const paused    = ['paused', 'hint', 'game-over'].includes(phase);
-  const showTraj  = (phase === 'playing' || phase === 'aiming') && !activeProjectile;
+  const paused = phase === 'paused';
+  const showTrajectory = phase === 'playing' || phase === 'aiming';
 
   return (
     <>
-      <ambientLight intensity={0.75} />
+      <ambientLight intensity={0.9} />
       <directionalLight
-        position={[25, 40, 25]}
-        intensity={1.75}
+        position={[25, 45, 20]}
+        intensity={1.8}
         castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-camera-left={-70}
-        shadow-camera-right={70}
+        shadow-mapSize={[2048, 2048]}
+        shadow-camera-near={0.5}
+        shadow-camera-far={120}
+        shadow-camera-left={-60}
+        shadow-camera-right={60}
         shadow-camera-top={35}
-        shadow-camera-bottom={-35}
+        shadow-camera-bottom={-25}
       />
-      <hemisphereLight args={['#b3e5fc', '#558b2f', 0.55]} />
+      <directionalLight position={[-20, 20, -10]} intensity={0.5} color="#b3e5fc" />
+      <directionalLight position={[0, -15, 10]} intensity={0.3} color="#81c784" />
 
-      <Suspense fallback={null}>
-        <Environment />
-        <Terrain />
-      </Suspense>
+      <Environment />
+      <Terrain />
 
-      {isPlaying && showTraj && <primitive object={trajectoryGroupRef.current} visible />}
+      {/* Trajectory preview dots */}
+      <primitive object={trajectoryGroupRef.current} />
 
-      {isPlaying && (
-        <PlayerTank
-          ref={playerRef}
-          keys={kbKeys}
-          fireSignal={fireSignal}
-          onFire={handleFire}
-          paused={paused}
-          showTrajectory={showTraj}
-          trajectoryGroupRef={trajectoryGroupRef}
-        />
-      )}
+      {/* Player Tank with Unified Controls */}
+      <PlayerTank
+        ref={playerRef}
+        keys={unifiedKeys}
+        fireSignal={tankFireSignal}
+        onFire={handleFire}
+        paused={paused}
+        showTrajectory={showTrajectory}
+        trajectoryGroupRef={trajectoryGroupRef}
+      />
 
-      {isPlaying && targets.map((target, i) => (
+      {/* Enemy answer tanks */}
+      {targets.map((target, idx) => (
         <EnemyTankWrapper
           key={target.id}
           target={target}
-          initialX={enemyStartXs[i] ?? 0}
+          initialX={enemyStartXs[idx] ?? idx * 18}
           paused={paused}
-          enemyRef={(h) => { enemyRefs.current[i] = h; }}
+          enemyRef={(handle) => {
+            enemyRefs.current[idx] = handle;
+          }}
         />
       ))}
 
+      {/* Active Artillery Projectile */}
       {activeProjectile && (
         <Projectile
           key={activeProjectile.id}
@@ -313,15 +309,31 @@ function EnemyTankWrapper({ target, initialX, paused, enemyRef }: WrapperProps) 
 }
 
 // ─────────────────────────────────────────────────────────────────
+//  Helper: create trajectory dot group
+// ─────────────────────────────────────────────────────────────────
+function createTrajectoryGroup(): THREE.Group {
+  const grp = new THREE.Group();
+  for (let i = 0; i < 14; i++) {
+    const geo = new THREE.SphereGeometry(0.22, 10, 10);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xffea00,
+      transparent: true,
+      opacity: 0.9,
+    });
+    const m = new THREE.Mesh(geo, mat);
+    m.visible = false;
+    grp.add(m);
+  }
+  return grp;
+}
+
+// ─────────────────────────────────────────────────────────────────
 //  GameScene — top-level Canvas + public handle
 // ─────────────────────────────────────────────────────────────────
-// No props needed — all state comes from zustand
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface GameSceneProps {}
 
 export const GameScene = forwardRef<GameSceneHandle, GameSceneProps>((_props, ref) => {
-  /** Shared mutable key state — written by App (touch), read by SceneInner (merged with keyboard) */
-  const externalKeys = useRef<KeyState>({ left: false, right: false });
+  const externalKeys = useRef<KeyState>({ left: false, right: false, up: false, down: false });
   const fireSignal   = useRef(false);
   const playerRef    = useRef<PlayerTankHandle>(null);
 
