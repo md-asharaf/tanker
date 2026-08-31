@@ -58,11 +58,20 @@ export function useKeyboard() {
       }
     };
 
+    const onBlur = () => {
+      keys.current.left  = false;
+      keys.current.right = false;
+      keys.current.up    = false;
+      keys.current.down  = false;
+    };
+
     window.addEventListener('keydown', down);
     window.addEventListener('keyup',   up);
+    window.addEventListener('blur',    onBlur);
     return () => {
       window.removeEventListener('keydown', down);
       window.removeEventListener('keyup',   up);
+      window.removeEventListener('blur',    onBlur);
     };
   }, []);
 

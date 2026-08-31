@@ -13,7 +13,7 @@ interface ProjectileProps {
   enemyHandles:   React.MutableRefObject<(EnemyTankHandle | null)[]>;
   enemyTargetIds: string[];
   onHitTank:      (tankId: string) => void;
-  onHitTerrain:   () => void;
+  onHitTerrain:   (impactPos: THREE.Vector3) => void;
   onDestroy:      () => void;
 }
 
@@ -113,7 +113,7 @@ export function Projectile({
     if (pos.current.y <= terrainY + 0.4) {
       if (!resolved.current) {
         resolved.current = true;
-        onHitTerrain();
+        onHitTerrain(pos.current.clone());
         setTimeout(onDestroy, 400);
       }
       return;
@@ -123,7 +123,7 @@ export function Projectile({
     if (age.current > GAME_CONFIG.projectile.maxFlightTime) {
       if (!resolved.current) {
         resolved.current = true;
-        onHitTerrain();
+        onHitTerrain(pos.current.clone());
         setTimeout(onDestroy, 200);
       }
       return;

@@ -102,7 +102,9 @@ function MobileControls({
   onLeftStart, onLeftEnd, onRightStart, onRightEnd, onFire,
 }: MobileControlsProps) {
   const { phase } = useGameStore();
-  const visible = phase === 'playing' || phase === 'aiming' || phase === 'firing';
+  const visible =
+    phase === 'playing' || phase === 'aiming' || phase === 'firing' ||
+    phase === 'resolving' || phase === 'hint';
   if (!visible) return null;
 
   return (

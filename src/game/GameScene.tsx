@@ -188,7 +188,7 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
   }, [targets, resolveShot, advanceQuestion]);
 
   // ── Terrain hit ───────────────────────────────────────────────
-  const handleHitTerrain = useCallback(() => {
+  const handleHitTerrain = useCallback((impactPos?: THREE.Vector3) => {
     if (hasResolved.current) return;
     hasResolved.current = true;
 
@@ -199,8 +199,8 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
     AudioManager.play('wrong');
     AudioManager.play('impact');
 
-    const projPos = activeProjectile ? activeProjectile.origin : new THREE.Vector3(0, getTerrainHeight(0), 0);
-    setExplosions((e) => [...e, { id: explCounter.current++, pos: projPos, type: 'terrain' }]);
+    const pos = impactPos ?? (activeProjectile ? activeProjectile.origin : new THREE.Vector3(0, getTerrainHeight(0), 0));
+    setExplosions((e) => [...e, { id: explCounter.current++, pos, type: 'terrain' }]);
 
     setTimeout(() => advanceQuestion(), GAME_CONFIG.feedback.displayTime);
   }, [activeProjectile, resolveShot, advanceQuestion]);
