@@ -648,7 +648,8 @@ html, body, #root {
   .top-utility-bar {
     top: max(10px, env(safe-area-inset-top, 10px));
     left: max(12px, env(safe-area-inset-left, 12px));
-    padding: 4px 8px;
+    height: 38px;
+    padding: 2px 6px;
     gap: 6px;
     z-index: 25;
   }
@@ -660,25 +661,39 @@ html, body, #root {
     font-size: 13px;
   }
 
+  /* Compact Horizontal Score Pill in Portrait */
   .score-panel {
     top: max(10px, env(safe-area-inset-top, 10px));
     right: max(12px, env(safe-area-inset-right, 12px));
-    padding: 4px 12px;
+    height: 38px;
+    padding: 4px 10px;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    border-radius: 12px;
     z-index: 25;
   }
-  .score-value {
-    font-size: 20px;
+  .score-panel .score-label {
+    display: none;
+  }
+  .score-panel .score-value {
+    font-size: 17px;
+  }
+  .score-panel .streak-row {
+    margin-top: 0;
+    padding: 2px 6px;
+    font-size: 11px;
   }
 
-  /* Stacked Question Banner in Portrait */
+  /* Stacked Question Banner cleanly below Top Header Bar */
   .arcade-question-header {
-    top: max(54px, calc(env(safe-area-inset-top, 0px) + 48px));
+    top: max(56px, calc(env(safe-area-inset-top, 0px) + 54px));
     left: 50%;
     transform: translateX(-50%);
     width: min(92vw, 440px);
     flex-direction: column;
     align-items: stretch;
-    border-radius: 18px;
+    border-radius: 16px;
     padding: 10px 14px;
     gap: 6px;
     z-index: 20;
@@ -695,7 +710,7 @@ html, body, #root {
   }
 
   .feedback-top-container {
-    top: max(148px, calc(env(safe-area-inset-top, 0px) + 140px));
+    top: max(164px, calc(env(safe-area-inset-top, 0px) + 158px));
   }
 
   .overlay-card {

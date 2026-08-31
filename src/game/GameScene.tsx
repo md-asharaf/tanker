@@ -317,10 +317,10 @@ function ResponsiveCamera() {
   useFrame(() => {
     const aspect = size.width / Math.max(1, size.height);
     const isPortrait = aspect < 1.0;
-    const targetFov = isPortrait ? 66 : 42;
-    const targetZ = isPortrait ? 38 : 23;
-    const targetY = isPortrait ? 8 : 5;
-    const targetX = isPortrait ? -14 : -22;
+    const targetFov = isPortrait ? 68 : 42;
+    const targetZ = isPortrait ? 44 : 23;
+    const targetY = isPortrait ? 11 : 5;
+    const targetX = isPortrait ? -8 : -22;
 
     const cam = camera as THREE.PerspectiveCamera;
     if (Math.abs(cam.fov - targetFov) > 0.05) {
