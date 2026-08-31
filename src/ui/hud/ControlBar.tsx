@@ -5,7 +5,8 @@ export function ControlBar() {
   const { phase, muted, toggleMute, setHintVisible, setPhase } = useGameStore();
 
   const visible =
-    phase === 'playing' || phase === 'aiming' || phase === 'firing' || phase === 'hint';
+    phase === 'playing' || phase === 'aiming' || phase === 'firing' ||
+    phase === 'resolving' || phase === 'paused' || phase === 'hint';
 
   if (!visible) return null;
 
