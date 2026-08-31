@@ -48,6 +48,7 @@ function KeyboardGuide() {
 
   return (
     <div
+      className="keyboard-guide-hud"
       style={{
         position: 'absolute',
         bottom: 24,
@@ -58,27 +59,28 @@ function KeyboardGuide() {
         pointerEvents: 'none',
         opacity: 0.85,
         transition: 'opacity 1s ease',
-        background: 'rgba(15, 23, 42, 0.75)',
-        padding: '6px 16px',
-        borderRadius: 20,
-        border: '1px solid rgba(255,255,255,0.15)',
-        backdropFilter: 'blur(4px)',
+        zIndex: 15,
       }}
     >
-      {hints.map(({ key, desc }) => (
-        <div key={key} style={{ textAlign: 'center' }}>
-          <div style={{
-            background: 'rgba(255,213,79,0.15)',
-            border: '1px solid rgba(255,213,79,0.4)',
-            borderRadius: 6,
-            padding: '2px 8px',
+      {hints.map((h) => (
+        <div
+          key={h.key}
+          style={{
+            background: 'rgba(15, 23, 42, 0.88)',
+            border: '1px solid rgba(255, 255, 255, 0.18)',
+            borderRadius: 8,
+            padding: '4px 10px',
+            color: '#e2e8f0',
             fontFamily: 'var(--font-heading)',
-            fontSize: 10,
-            letterSpacing: '0.08em',
-            color: 'var(--col-gold)',
-            marginBottom: 2,
-          }}>{key}</div>
-          <div style={{ fontSize: 10, color: '#e2e8f0', fontWeight: 600 }}>{desc}</div>
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: '0.06em',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <span style={{ color: 'var(--col-gold)', marginRight: 6 }}>{h.key}</span>
+          <span>{h.desc}</span>
         </div>
       ))}
     </div>
@@ -154,11 +156,25 @@ export default function App() {
     sceneRef.current?.triggerFire();
   }, []);
 
-  // Left click on game canvas fires cannon
+  // Desktop-only click-to-fire on game canvas (touchscreens only fire via the dedicated FIRE button!)
   const handleCanvasClick = useCallback((e: React.MouseEvent) => {
-    // Only fire if clicking directly on game area, not on buttons or panels
+    // 1. Strictly ignore touch events / mobile devices
+    const isTouchDevice =
+      ('ontouchstart' in window) ||
+      navigator.maxTouchPoints > 0 ||
+      window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+    if (isTouchDevice) return;
+
+    // 2. Ignore clicks on buttons, HUD overlays, or control bars
     const target = e.target as HTMLElement;
-    if (target.closest('button') || target.closest('.arcade-question-header') || target.closest('.score-panel') || target.closest('.overlay-card') || target.closest('.top-utility-bar')) {
+    if (
+      target.closest('button') ||
+      target.closest('.arcade-question-header') ||
+      target.closest('.score-panel') ||
+      target.closest('.overlay-card') ||
+      target.closest('.top-utility-bar') ||
+      target.closest('.mobile-controls')
+    ) {
       return;
     }
     handleFire();

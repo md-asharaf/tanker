@@ -633,6 +633,14 @@ html, body, #root {
     z-index: 30;
   }
   .mobile-controls > * { pointer-events: auto; }
+
+  /* Strictly hide keyboard control hints on mobile */
+  .keyboard-guide-hud {
+    display: none !important;
+  }
+  .desktop-controls-guide {
+    display: none !important;
+  }
 }
 
 /* ── Dedicated Portrait Layout (Phones & Tablets) ────────────── */

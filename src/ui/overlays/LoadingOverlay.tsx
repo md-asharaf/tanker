@@ -78,8 +78,9 @@ export function LoadingOverlay() {
               </div>
             </div>
 
-            {/* Controls Guide */}
+            {/* Controls Guide (Desktop only) */}
             <div
+              className="desktop-controls-guide"
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(3, 1fr)',
