@@ -116,6 +116,7 @@ function MobileControls({
           aria-label="Move tank left"
           onTouchStart={(e) => { e.preventDefault(); onLeftStart(); }}
           onTouchEnd={(e) => { e.preventDefault(); onLeftEnd(); }}
+          onTouchCancel={(e) => { e.preventDefault(); onLeftEnd(); }}
           onMouseDown={onLeftStart}
           onMouseUp={onLeftEnd}
           onMouseLeave={onLeftEnd}
@@ -126,6 +127,7 @@ function MobileControls({
           aria-label="Move tank right"
           onTouchStart={(e) => { e.preventDefault(); onRightStart(); }}
           onTouchEnd={(e) => { e.preventDefault(); onRightEnd(); }}
+          onTouchCancel={(e) => { e.preventDefault(); onRightEnd(); }}
           onMouseDown={onRightStart}
           onMouseUp={onRightEnd}
           onMouseLeave={onRightEnd}
@@ -138,6 +140,8 @@ function MobileControls({
           className="fire-btn-mobile"
           aria-label="Fire cannon"
           onTouchStart={(e) => { e.preventDefault(); onFire(); }}
+          onTouchEnd={(e) => { e.preventDefault(); }}
+          onTouchCancel={(e) => { e.preventDefault(); }}
           onMouseDown={(e) => { e.preventDefault(); onFire(); }}
         >
           🎯<br />FIRE
@@ -145,6 +149,93 @@ function MobileControls({
       </div>
     </div>
   );
+}
+
+
+// ─────────────────────────────────────────────────────────────────
+//  Procedural Confetti Overlay for Victory & High Streaks
+// ─────────────────────────────────────────────────────────────────
+function ConfettiCelebration() {
+  const { phase } = useGameStore();
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    if (phase !== 'game-over') return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const colors = ['#ffd54f', '#4caf50', '#29b6f6', '#ff4081', '#ff9800', '#ab47bc'];
+    const particles = Array.from({ length: 65 }, () => ({
+      x: Math.random() * canvas.width,
+      y: -20 - Math.random() * 80,
+      w: 8 + Math.random() * 8,
+      h: 5 + Math.random() * 6,
+      vx: (Math.random() - 0.5) * 4,
+      vy: 2 + Math.random() * 4,
+      rot: Math.random() * Math.PI * 2,
+      vRot: (Math.random() - 0.5) * 0.15,
+      col: colors[Math.floor(Math.random() * colors.length)],
+    }));
+
+    let animId: number;
+    const render = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      particles.forEach((p) => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.rot += p.vRot;
+        if (p.y > canvas.height + 20) {
+          p.y = -10;
+          p.x = Math.random() * canvas.width;
+        }
+
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.col;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      });
+      animId = requestAnimationFrame(render);
+    };
+
+    render();
+    return () => cancelAnimationFrame(animId);
+  }, [phase]);
+
+  if (phase !== 'game-over') return null;
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        pointerEvents: 'none',
+        zIndex: 50,
+      }}
+    />
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Screen Impact Vignette (Juice on Hit/Miss)
+// ─────────────────────────────────────────────────────────────────
+function ScreenVignette() {
+  const { phase, lastResult } = useGameStore();
+  if (phase !== 'resolving' || !lastResult) return null;
+
+  const className =
+    lastResult === 'correct'
+      ? 'screen-vignette screen-vignette--correct'
+      : 'screen-vignette screen-vignette--wrong';
+
+  return <div className={className} aria-hidden="true" />;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -193,6 +284,9 @@ export default function App() {
       {/* 3D Game Scene */}
       <GameScene ref={sceneRef} />
 
+      {/* Screen Hit Flash Vignette */}
+      <ScreenVignette />
+
       {/* HUD Layer */}
       <div className="hud-layer">
         <QuestionPanel />
@@ -208,6 +302,9 @@ export default function App() {
         />
       </div>
 
+      {/* Victory Confetti */}
+      <ConfettiCelebration />
+
       {/* Overlays */}
       <LoadingOverlay />
       <CountdownOverlay />
@@ -219,3 +316,4 @@ export default function App() {
     </div>
   );
 }
+

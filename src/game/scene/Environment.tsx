@@ -8,9 +8,24 @@ import * as THREE from 'three';
 
 export function Environment() {
   const cloudsRef = useRef<THREE.Group>(null);
+  const sunRaysRef = useRef<THREE.Group>(null);
+  const motesRef = useRef<THREE.Points>(null);
 
-  // Animate drifting clouds
+  // Motes positions
+  const MOTE_COUNT = 45;
+  const motePositions = useMemo(() => {
+    const arr = new Float32Array(MOTE_COUNT * 3);
+    for (let i = 0; i < MOTE_COUNT; i++) {
+      arr[i * 3] = (Math.random() - 0.5) * 120;
+      arr[i * 3 + 1] = Math.random() * 25 - 2;
+      arr[i * 3 + 2] = (Math.random() - 0.5) * 35;
+    }
+    return arr;
+  }, []);
+
+  // Animate drifting clouds, sunbeams, and floating dust motes
   useFrame((_, delta) => {
+    // 1. Drifting clouds
     if (cloudsRef.current) {
       cloudsRef.current.children.forEach((cloud, i) => {
         cloud.position.x += (0.6 + (i % 3) * 0.3) * delta;
@@ -18,6 +33,24 @@ export function Environment() {
           cloud.position.x = -90;
         }
       });
+    }
+
+    // 2. Rotating Sun Rays
+    if (sunRaysRef.current) {
+      sunRaysRef.current.rotation.z += delta * 0.08;
+    }
+
+    // 3. Floating Dust Motes
+    if (motesRef.current) {
+      const pos = motesRef.current.geometry.attributes.position as THREE.BufferAttribute;
+      for (let i = 0; i < MOTE_COUNT; i++) {
+        let x = pos.getX(i) + delta * 0.4;
+        let y = pos.getY(i) + Math.sin(Date.now() * 0.001 + i) * 0.015;
+        if (x > 60) x = -60;
+        pos.setX(i, x);
+        pos.setY(i, y);
+      }
+      pos.needsUpdate = true;
     }
   });
 
@@ -27,15 +60,33 @@ export function Environment() {
       <SkyDome />
 
       {/* Radiant Sun in background */}
-      <mesh position={[25, 28, -45]}>
-        <sphereGeometry args={[7, 24, 24]} />
-        <meshBasicMaterial color="#fff3a8" />
-      </mesh>
-      {/* Sun glow halo */}
-      <mesh position={[25, 28, -46]}>
-        <sphereGeometry args={[14, 24, 24]} />
-        <meshBasicMaterial color="#ffe57f" transparent opacity={0.35} />
-      </mesh>
+      <group position={[25, 28, -45]}>
+        {/* Sun Core */}
+        <mesh>
+          <sphereGeometry args={[7.2, 24, 24]} />
+          <meshBasicMaterial color="#fff3a8" />
+        </mesh>
+        {/* Sun glow halo */}
+        <mesh position={[0, 0, -1]}>
+          <sphereGeometry args={[14.5, 24, 24]} />
+          <meshBasicMaterial color="#ffe57f" transparent opacity={0.38} />
+        </mesh>
+        {/* Outer Solar Aura */}
+        <mesh position={[0, 0, -2]}>
+          <sphereGeometry args={[22, 20, 20]} />
+          <meshBasicMaterial color="#ffcc80" transparent opacity={0.18} />
+        </mesh>
+
+        {/* Rotating Sunbeams / God-Rays */}
+        <group ref={sunRaysRef}>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <mesh key={i} rotation={[0, 0, (i * Math.PI) / 4]}>
+              <planeGeometry args={[1.8, 48]} />
+              <meshBasicMaterial color="#fff9c4" transparent opacity={0.14} side={THREE.DoubleSide} />
+            </mesh>
+          ))}
+        </group>
+      </group>
 
       {/* Floating puffy cartoon clouds */}
       <group ref={cloudsRef}>
@@ -45,6 +96,25 @@ export function Environment() {
         <CloudCluster position={[50, 24, -32]} scale={1.5} />
         <CloudCluster position={[-80, 18, -20]} scale={1.0} />
       </group>
+
+      {/* Atmospheric Floating Sun Motes */}
+      <points ref={motesRef}>
+        <bufferGeometry>
+          <bufferAttribute
+            attach="attributes-position"
+            array={motePositions}
+            count={MOTE_COUNT}
+            itemSize={3}
+          />
+        </bufferGeometry>
+        <pointsMaterial
+          color="#fff9c4"
+          size={0.45}
+          transparent
+          opacity={0.65}
+          sizeAttenuation
+        />
+      </points>
     </>
   );
 }
@@ -112,3 +182,4 @@ function CloudCluster({ position, scale = 1 }: { position: [number, number, numb
     </group>
   );
 }
+

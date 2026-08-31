@@ -33,6 +33,11 @@ interface Props {
   trajectoryGroupRef: React.RefObject<THREE.Group>;
 }
 
+// ── Pre-allocated Math Vectors (Zero-GC Optimization) ─────────────
+const _plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+const _planeIntersect = new THREE.Vector3();
+const _ndcVec = new THREE.Vector2();
+
 // ─────────────────────────────────────────────────────────────────
 //  Chunky Stylized Player Tank (Hills of Steel Aesthetic)
 // ─────────────────────────────────────────────────────────────────
@@ -94,8 +99,10 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
 
       if (flashRef.current) {
         flashRef.current.visible = true;
-        flashRef.current.scale.setScalar(1.3 + secureRandom() * 0.4);
-        setTimeout(() => { if (flashRef.current) flashRef.current.visible = false; }, 90);
+        flashRef.current.scale.setScalar(1.4 + secureRandom() * 0.4);
+        setTimeout(() => {
+          if (flashRef.current) flashRef.current.visible = false;
+        }, 90);
       }
     }, [onFire]);
 
@@ -115,11 +122,8 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
       fire: executeFire,
     }));
 
-    // ── Mouse / Touch Aim-to-Cursor Listener ──────────────────────
+    // ── Mouse / Touch Aim-to-Cursor Listener (Zero-GC) ────────────
     useEffect(() => {
-      const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0); // Z=0 gameplay plane
-      const planeIntersect = new THREE.Vector3();
-
       const onPointerMove = (e: PointerEvent) => {
         if (paused) return;
         // Ignore pointer events over the bottom HUD button bar
@@ -127,21 +131,20 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
         const target = e.target as HTMLElement | null;
         if (target?.closest?.('.control-bar') || target?.closest?.('button')) return;
 
-        const ndcX = (e.clientX / size.width) * 2 - 1;
-        const ndcY = -(e.clientY / size.height) * 2 + 1;
+        _ndcVec.x = (e.clientX / size.width) * 2 - 1;
+        _ndcVec.y = -(e.clientY / size.height) * 2 + 1;
 
-        const ndcVec = new THREE.Vector2(ndcX, ndcY);
-        raycaster.setFromCamera(ndcVec, camera);
+        raycaster.setFromCamera(_ndcVec, camera);
 
-        if (raycaster.ray.intersectPlane(plane, planeIntersect)) {
-          mouseAim.current.x = planeIntersect.x;
-          mouseAim.current.y = planeIntersect.y;
+        if (raycaster.ray.intersectPlane(_plane, _planeIntersect)) {
+          mouseAim.current.x = _planeIntersect.x;
+          mouseAim.current.y = _planeIntersect.y;
           mouseAim.current.active = true;
 
           const tankX = posX.current;
           const tankY = getTerrainHeight(tankX) + 1.8;
-          const dx = planeIntersect.x - tankX;
-          const dy = planeIntersect.y - tankY;
+          const dx = _planeIntersect.x - tankX;
+          const dy = _planeIntersect.y - tankY;
 
           // Auto-flip tank facing based on cursor position relative to tank
           if (dx < -1.0) {
@@ -156,9 +159,10 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
         }
       };
 
-      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointermove', onPointerMove, { passive: true });
       return () => window.removeEventListener('pointermove', onPointerMove);
     }, [camera, raycaster, size, paused]);
+
 
     // ── Main Frame Loop ───────────────────────────────────────────
     useFrame((_, delta) => {
@@ -244,19 +248,9 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
         }
       }
 
-      // ── Clean Side-Profile Camera Following ─────────────────────
-      const leadX = facing.current === 1 ? 5.5 : -5.5;
-      const targetCamX = posX.current + leadX;
-      const targetCamY = h + 3.4;
-      const targetCamZ = 24.0;
-
-      camera.position.x = THREE.MathUtils.lerp(camera.position.x, targetCamX, 0.08);
-      camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetCamY, 0.08);
-      camera.position.z = THREE.MathUtils.lerp(camera.position.z, targetCamZ, 0.08);
-      camera.lookAt(posX.current + leadX * 0.8, h + 2.2, 0);
-
       // Trajectory preview
       if (showTrajectory && trajectoryGroupRef.current) {
+
         updateTrajectoryDots(
           trajectoryGroupRef.current,
           posX.current,
@@ -268,6 +262,17 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
         trajectoryGroupRef.current.visible = true;
       } else if (trajectoryGroupRef.current) {
         trajectoryGroupRef.current.visible = false;
+      }
+    });
+
+    const antennaRef = useRef<THREE.Group>(null);
+
+    // Dynamic antenna spring physics in frame loop
+    useFrame((_, delta) => {
+      if (antennaRef.current) {
+        const dt = Math.min(delta, 0.05);
+        const targetWiggle = -(velocity.current / CFG.playerTank.maxSpeed) * 0.45 + Math.sin(Date.now() * 0.01) * 0.08;
+        antennaRef.current.rotation.z = THREE.MathUtils.lerp(antennaRef.current.rotation.z, targetWiggle, dt * 10);
       }
     });
 
@@ -323,15 +328,34 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
             <meshLambertMaterial color={HULL_GREEN} />
           </mesh>
 
+          {/* Dual Front Headlights */}
+          <mesh position={[1.65, 0.28, 0.72]}>
+            <cylinderGeometry args={[0.12, 0.15, 0.2, 12]} />
+            <meshLambertMaterial color="#37474f" />
+          </mesh>
+          <mesh position={[1.74, 0.28, 0.72]}>
+            <sphereGeometry args={[0.11, 10, 10]} />
+            <meshBasicMaterial color="#fff59d" />
+          </mesh>
+          {/* Headlight Volumetric Beam */}
+          <mesh position={[2.8, 0.2, 0.72]} rotation={[0, 0, -Math.PI / 2]}>
+            <coneGeometry args={[0.8, 2.2, 12]} />
+            <meshBasicMaterial color="#fff9c4" transparent opacity={0.18} side={THREE.DoubleSide} />
+          </mesh>
+
           {/* Dual Rear Exhaust Pipes */}
           <mesh position={[-1.75, 0.4, 0.55]} rotation={[0, 0, Math.PI / 2]} castShadow>
             <cylinderGeometry args={[0.08, 0.1, 0.4, 8]} />
             <meshLambertMaterial color="#212121" />
           </mesh>
           <group ref={exhaustRef} position={[-2.0, 0.5, 0.55]} visible={false}>
-            <mesh>
-              <sphereGeometry args={[0.25, 8, 8]} />
-              <meshBasicMaterial color="#ffffff" transparent opacity={0.6} />
+            <mesh position={[0, 0, 0]}>
+              <sphereGeometry args={[0.22, 8, 8]} />
+              <meshBasicMaterial color="#ffffff" transparent opacity={0.65} />
+            </mesh>
+            <mesh position={[-0.35, 0.2, 0]}>
+              <sphereGeometry args={[0.32, 8, 8]} />
+              <meshBasicMaterial color="#e0e0e0" transparent opacity={0.45} />
             </mesh>
           </group>
 
@@ -351,6 +375,18 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
               <sphereGeometry args={[0.92, 18, 14, 0, Math.PI * 2, 0, Math.PI / 2]} />
               <meshLambertMaterial color={HULL_LIGHT} />
             </mesh>
+
+            {/* Wobbly Radio Antenna */}
+            <group ref={antennaRef} position={[-0.6, 0.45, -0.4]}>
+              <mesh position={[0, 0.8, 0]}>
+                <cylinderGeometry args={[0.02, 0.04, 1.6, 6]} />
+                <meshLambertMaterial color="#212121" />
+              </mesh>
+              <mesh position={[0, 1.65, 0]}>
+                <sphereGeometry args={[0.09, 8, 8]} />
+                <meshBasicMaterial color="#ffd54f" />
+              </mesh>
+            </group>
 
             {/* Commander */}
             <group position={[-0.2, 0.48, 0]}>
@@ -409,6 +445,7 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
     );
   }
 );
+
 
 PlayerTank.displayName = 'PlayerTank';
 

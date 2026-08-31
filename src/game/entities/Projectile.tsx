@@ -40,13 +40,14 @@ export function Projectile({
 
   // Trail Particles
   const TRAIL_LEN = 28;
-  const trailPos  = useRef<Float32Array>(new Float32Array(TRAIL_LEN * 3));
+  const trailPos  = useRef<Float32Array>(new Float32Array(TRAIL_LEN * 3).fill(9999));
   const trailIdx  = useRef(0);
   const trailRef  = useRef<THREE.Points>(null);
 
   useEffect(() => {
     return () => { resolved.current = true; };
   }, []);
+
 
   useFrame((_, delta) => {
     if (resolved.current) return;

@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { useGameStore } from '../../game/gameStore';
 import { AudioManager } from '../../audio/AudioManager';
 
 export function ControlBar() {
   const { phase, muted, toggleMute, setHintVisible, setPhase } = useGameStore();
+  const [bgmOn, setBgmOn] = useState(() => AudioManager.isBgmEnabled());
 
   const visible =
     phase === 'playing' || phase === 'aiming' || phase === 'firing' ||
@@ -25,6 +27,13 @@ export function ControlBar() {
     AudioManager.play('uiClick');
   };
 
+  const handleBgmToggle = () => {
+    const next = !bgmOn;
+    setBgmOn(next);
+    AudioManager.setBgmEnabled(next);
+    AudioManager.play('uiClick');
+  };
+
   return (
     <div className="top-utility-bar">
       <button className="ctrl-btn-compact" onClick={handlePause} title="Pause Game (P / Esc)" aria-label="Pause game">
@@ -37,9 +46,20 @@ export function ControlBar() {
         <span className="btn-text">HINT</span>
       </button>
 
+      <button
+        className="ctrl-btn-compact"
+        onClick={handleBgmToggle}
+        title={bgmOn ? 'Mute Music' : 'Enable Music'}
+        aria-label={bgmOn ? 'Mute Music' : 'Enable Music'}
+      >
+        <span className="btn-icon">🎵</span>
+        <span className="btn-text">{bgmOn ? 'BGM ON' : 'BGM OFF'}</span>
+      </button>
+
       <button className="ctrl-btn-compact ctrl-btn-icon-only" onClick={handleMute} title={muted ? 'Unmute Sound (M)' : 'Mute Sound (M)'} aria-label={muted ? 'Unmute' : 'Mute'}>
         <span className="btn-icon">{muted ? '🔇' : '🔊'}</span>
       </button>
     </div>
   );
 }
+

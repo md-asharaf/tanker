@@ -56,10 +56,82 @@ interface ExplosionItem {
   type: 'tank' | 'terrain';
 }
 
+// ── Floating Score Popup in 3D Space ─────────────────────────────
+interface FloatingScoreItem {
+  id: number;
+  text: string;
+  color: string;
+  pos: THREE.Vector3;
+  age: number;
+}
+
+const scoreTextureCache = new Map<string, THREE.CanvasTexture>();
+
+function getScoreCanvasTexture(text: string, color: string): THREE.CanvasTexture {
+  const key = `${text}_${color}`;
+  if (scoreTextureCache.has(key)) return scoreTextureCache.get(key)!;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 96;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.font = '900 48px "Orbitron", sans-serif, system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 4;
+
+    ctx.fillStyle = color;
+    ctx.fillText(text, 128, 48);
+
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3;
+    ctx.strokeText(text, 128, 48);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  scoreTextureCache.set(key, texture);
+  return texture;
+}
+
+function FloatingScoreSprite({ item }: { item: FloatingScoreItem }) {
+  const spriteRef = useRef<THREE.Sprite>(null);
+  const texture = useMemo(() => getScoreCanvasTexture(item.text, item.color), [item.text, item.color]);
+
+  useFrame((_, delta) => {
+    if (!spriteRef.current) return;
+    const dt = Math.min(delta, 0.05);
+    spriteRef.current.position.y += dt * 3.2;
+    const scale = 1.0 + Math.sin(Math.min(1, item.age * 3) * Math.PI) * 0.25;
+    spriteRef.current.scale.set(3.6 * scale, 1.35 * scale, 1);
+  });
+
+  return (
+    <sprite
+      ref={spriteRef}
+      position={[item.pos.x, item.pos.y, 2.5]}
+      scale={[3.6, 1.35, 1]}
+      renderOrder={999}
+    >
+      <spriteMaterial
+        map={texture}
+        transparent
+        depthTest={false}
+        depthWrite={false}
+        opacity={Math.max(0, 1 - item.age / 1.1)}
+      />
+    </sprite>
+  );
+}
+
+
 function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
   const {
     phase, questions, currentQuestionIndex, questionSessionId,
-    muted, resolveShot, advanceQuestion,
+    muted, streak, resolveShot, advanceQuestion,
   } = useGameStore();
 
   // Keyboard state
@@ -77,8 +149,11 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
 
   const [activeProjectile, setActiveProjectile] = useState<ProjectileState | null>(null);
   const [explosions, setExplosions]             = useState<ExplosionItem[]>([]);
+  const [floatingScores, setFloatingScores]     = useState<FloatingScoreItem[]>([]);
   const projCounter = useRef(0);
   const explCounter = useRef(0);
+  const scoreCounter = useRef(0);
+  const shakeRef = useRef(0);
 
   // ── Current question targets (preserve exact backend order) ──
   const targets = useMemo<TankTarget[]>(() => {
@@ -112,6 +187,7 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
     tankFireSignal.current = false;
     setActiveProjectile(null);
     setExplosions([]);
+    setFloatingScores([]);
     enemyRefs.current = new Array(targets.length).fill(null);
   }, [questionSessionId, targets.length]);
 
@@ -121,7 +197,25 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
   }, [muted]);
 
   // ── Frame Loop: Unified Controls & State Transitions ───────────
-  useFrame(() => {
+  useFrame((_, delta) => {
+    const dt = Math.min(delta, 0.05);
+
+    // Decay camera shake smoothly
+    if (shakeRef.current > 0.001) {
+      shakeRef.current *= Math.exp(-dt * 6.5);
+    } else {
+      shakeRef.current = 0;
+    }
+
+    // Age floating scores
+    if (floatingScores.length > 0) {
+      setFloatingScores((prev) =>
+        prev
+          .map((s) => ({ ...s, age: s.age + dt }))
+          .filter((s) => s.age < 1.1)
+      );
+    }
+
     // 1. Merge keyboard and mobile touch keys smoothly every frame
     unifiedKeys.current.left  = Boolean(kbKeys.current.left  || externalKeys.current.left);
     unifiedKeys.current.right = Boolean(kbKeys.current.right || externalKeys.current.right);
@@ -160,6 +254,7 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
   // ── Fire callback ─────────────────────────────────────────────
   const handleFire = useCallback((origin: THREE.Vector3, velocity: THREE.Vector3) => {
     if (hasResolved.current) return;
+    shakeRef.current = Math.max(shakeRef.current, 0.22);
     setActiveProjectile({ id: projCounter.current++, origin: origin.clone(), velocity: velocity.clone() });
   }, []);
 
@@ -179,13 +274,35 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
     AudioManager.play(result === 'correct' ? 'correct' : 'wrong');
     AudioManager.play('explosion');
 
+    if (result === 'correct' && (streak + 1) >= 2) {
+      setTimeout(() => AudioManager.play('combo'), 180);
+    }
+
+    shakeRef.current = Math.max(shakeRef.current, result === 'correct' ? 0.65 : 0.45);
+
     const idx = targets.indexOf(target);
     enemyRefs.current[idx]?.triggerHit();
     const pos = enemyRefs.current[idx]?.getPosition() ?? new THREE.Vector3();
     setExplosions((e) => [...e, { id: explCounter.current++, pos, type: 'tank' }]);
 
+    // Spawn 3D floating score popup
+    const popupText = result === 'correct'
+      ? (streak >= 1 ? `+100 (x${streak + 1})` : '+100')
+      : '-10';
+    const popupColor = result === 'correct' ? '#4caf50' : '#f44336';
+    setFloatingScores((prev) => [
+      ...prev,
+      {
+        id: scoreCounter.current++,
+        text: popupText,
+        color: popupColor,
+        pos: pos.clone().add(new THREE.Vector3(0, 2.5, 0)),
+        age: 0,
+      },
+    ]);
+
     setTimeout(() => advanceQuestion(), GAME_CONFIG.feedback.displayTime);
-  }, [targets, resolveShot, advanceQuestion]);
+  }, [targets, streak, resolveShot, advanceQuestion]);
 
   // ── Terrain hit ───────────────────────────────────────────────
   const handleHitTerrain = useCallback((impactPos?: THREE.Vector3) => {
@@ -199,8 +316,21 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
     AudioManager.play('wrong');
     AudioManager.play('impact');
 
+    shakeRef.current = Math.max(shakeRef.current, 0.3);
+
     const pos = impactPos ?? (activeProjectile ? activeProjectile.origin : new THREE.Vector3(0, getTerrainHeight(0), 0));
     setExplosions((e) => [...e, { id: explCounter.current++, pos, type: 'terrain' }]);
+
+    setFloatingScores((prev) => [
+      ...prev,
+      {
+        id: scoreCounter.current++,
+        text: 'MISS -10',
+        color: '#ff9800',
+        pos: pos.clone().add(new THREE.Vector3(0, 1.8, 0)),
+        age: 0,
+      },
+    ]);
 
     setTimeout(() => advanceQuestion(), GAME_CONFIG.feedback.displayTime);
   }, [activeProjectile, resolveShot, advanceQuestion]);
@@ -214,8 +344,9 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
 
   return (
     <>
-      <ResponsiveCamera />
-      <ambientLight intensity={0.9} />
+      <ResponsiveCamera shakeRef={shakeRef} playerRef={playerRef} />
+      <ambientLight intensity={0.95} />
+
       <directionalLight
         position={[25, 45, 20]}
         intensity={1.8}
@@ -284,6 +415,11 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
           onComplete={() => removeExplosion(ex.id)}
         />
       ))}
+
+      {/* Floating 3D score popups */}
+      {floatingScores.map((item) => (
+        <FloatingScoreSprite key={item.id} item={item} />
+      ))}
     </>
   );
 }
@@ -309,30 +445,54 @@ function EnemyTankWrapper({ target, initialX, paused, enemyRef }: WrapperProps) 
   return <EnemyTank ref={localRef} target={target} initialX={initialX} paused={paused} />;
 }
 
-// ─────────────────────────────────────────────────────────────────
-//  Helper: Adaptive Responsive Camera (Smooth Portrait & Landscape)
-// ─────────────────────────────────────────────────────────────────
-function ResponsiveCamera() {
+function ResponsiveCamera({
+  shakeRef,
+  playerRef,
+}: {
+  shakeRef: React.MutableRefObject<number>;
+  playerRef: React.RefObject<PlayerTankHandle>;
+}) {
   const { camera, size } = useThree();
+
   useFrame(() => {
     const aspect = size.width / Math.max(1, size.height);
     const isPortrait = aspect < 1.0;
-    const targetFov = isPortrait ? 68 : 42;
-    const targetZ = isPortrait ? 44 : 23;
-    const targetY = isPortrait ? 11 : 5;
-    const targetX = isPortrait ? -8 : -22;
+
+    // 1. Target FOV and distance based on viewport
+    const targetFov = isPortrait ? 58 : 42;
+    const targetCamZ = isPortrait ? 36 : 24.5;
+
+    // 2. Track Player Tank's current position and facing
+    const playerPos = playerRef.current?.getPosition() ?? new THREE.Vector3(-22, 0, 0);
+    const playerFacing = playerRef.current?.getFacing?.() ?? 1;
+
+    // Forward lead in facing direction
+    const leadX = isPortrait ? playerFacing * 4.0 : playerFacing * 6.5;
+    const targetCamX = playerPos.x + leadX;
+    const targetCamY = isPortrait ? playerPos.y + 6.0 : playerPos.y + 3.8;
 
     const cam = camera as THREE.PerspectiveCamera;
     if (Math.abs(cam.fov - targetFov) > 0.05) {
-      cam.fov = THREE.MathUtils.lerp(cam.fov, targetFov, 0.1);
+      cam.fov = THREE.MathUtils.lerp(cam.fov, targetFov, 0.08);
       cam.updateProjectionMatrix();
     }
-    cam.position.x = THREE.MathUtils.lerp(cam.position.x, targetX, 0.1);
-    cam.position.y = THREE.MathUtils.lerp(cam.position.y, targetY, 0.1);
-    cam.position.z = THREE.MathUtils.lerp(cam.position.z, targetZ, 0.1);
+
+    // Camera shake offset
+    const shake = shakeRef.current;
+    const shakeX = (Math.random() - 0.5) * shake * 1.5;
+    const shakeY = (Math.random() - 0.5) * shake * 1.5;
+
+    // Smooth Lerp Camera Position
+    cam.position.x = THREE.MathUtils.lerp(cam.position.x, targetCamX + shakeX, 0.08);
+    cam.position.y = THREE.MathUtils.lerp(cam.position.y, targetCamY + shakeY, 0.08);
+    cam.position.z = THREE.MathUtils.lerp(cam.position.z, targetCamZ, 0.08);
+
+    // Always smoothly orient camera towards player action zone
+    cam.lookAt(playerPos.x + leadX * 0.75, playerPos.y + 2.0, 0);
   });
   return null;
 }
+
 
 // ─────────────────────────────────────────────────────────────────
 //  Helper: create trajectory dot group
@@ -381,7 +541,7 @@ export const GameScene = forwardRef<GameSceneHandle, GameSceneProps>((_props, re
       camera={{ position: [-22, 5, 23], fov: 42 }}
       style={{ position: 'absolute', inset: 0 }}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
-      dpr={[1, 1.5]}
+      dpr={[1, Math.min(typeof window !== 'undefined' ? window.devicePixelRatio : 1, 2)]}
     >
       <Suspense fallback={null}>
         <SceneInner
@@ -395,3 +555,4 @@ export const GameScene = forwardRef<GameSceneHandle, GameSceneProps>((_props, re
 });
 
 GameScene.displayName = 'GameScene';
+
