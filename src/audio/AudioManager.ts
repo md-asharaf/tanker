@@ -141,34 +141,49 @@ class AudioManagerClass {
     src.stop(t + 0.35);
   }
 
-  // ── Tank explosion ──────────────────────────────────────────────
+  // ── Cinematic tank explosion ────────────────────────────────────
   playExplosion(): void {
     if (this.muted) return;
     const ctx = this.getCtx();
     if (!ctx) return;
     const t = ctx.currentTime;
 
-    const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.9), ctx.sampleRate);
+    // 1. Heavy noise blast & debris crackle
+    const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 1.2), ctx.sampleRate);
     const data = buf.getChannelData(0);
     for (let i = 0; i < data.length; i++) {
-      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.16));
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.22));
     }
     const src = ctx.createBufferSource();
     src.buffer = buf;
 
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.value = 450;
+    filter.frequency.setValueAtTime(600, t);
+    filter.frequency.exponentialRampToValueAtTime(80, t + 1.1);
 
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(3.2, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
+    gain.gain.setValueAtTime(3.8, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 1.2);
 
     src.connect(filter);
     filter.connect(gain);
     gain.connect(ctx.destination);
     src.start(t);
-    src.stop(t + 0.9);
+    src.stop(t + 1.2);
+
+    // 2. Sub-bass ground thud oscillator
+    const subOsc = ctx.createOscillator();
+    const subGain = ctx.createGain();
+    subOsc.type = 'sine';
+    subOsc.frequency.setValueAtTime(160, t);
+    subOsc.frequency.exponentialRampToValueAtTime(28, t + 0.6);
+    subGain.gain.setValueAtTime(2.2, t);
+    subGain.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+    subOsc.connect(subGain);
+    subGain.connect(ctx.destination);
+    subOsc.start(t);
+    subOsc.stop(t + 0.6);
   }
 
   // ── Correct answer fanfare ──────────────────────────────────────

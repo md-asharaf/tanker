@@ -6,6 +6,7 @@ import type { TankTarget, TankLifecycle } from '../gameTypes';
 import { GAME_CONFIG } from '../gameConfig';
 import { getTerrainHeight, getTerrainAngle } from '../scene/Terrain';
 import { randFloat, randInt } from '../../utils/math';
+import { useGameStore } from '../gameStore';
 
 export interface EnemyTankHandle {
   triggerHit:  () => void;
@@ -31,6 +32,8 @@ const OPTION_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
 
 export const EnemyTank = forwardRef<EnemyTankHandle, EnemyTankProps>(
   ({ target, initialX, paused, onLifecycleChange }, ref) => {
+    const { phase } = useGameStore();
+
     const groupRef  = useRef<THREE.Group>(null);
     const turretRef = useRef<THREE.Group>(null);
     const wheelsRef = useRef<THREE.Group>(null);
@@ -82,7 +85,6 @@ export const EnemyTank = forwardRef<EnemyTankHandle, EnemyTankProps>(
 
       if (lifecycle.current === 'hit') {
         explodeTimer.current -= dt;
-        // Hit flash / wobble
         grp.rotation.z += (Math.random() - 0.5) * 0.3;
         if (explodeTimer.current <= 0) {
           report('exploding');
@@ -132,6 +134,11 @@ export const EnemyTank = forwardRef<EnemyTankHandle, EnemyTankProps>(
 
     const wheelXs = [-1.3, -0.65, 0, 0.65, 1.3];
 
+    // Only show floating answer badges during active gameplay
+    const showBadge =
+      (phase === 'playing' || phase === 'aiming' || phase === 'firing' || phase === 'resolving' || phase === 'countdown') &&
+      lifecycle.current === 'active';
+
     return (
       <group ref={groupRef}>
         {/* Tank Faces Left (towards player approaching from left) */}
@@ -163,27 +170,27 @@ export const EnemyTank = forwardRef<EnemyTankHandle, EnemyTankProps>(
           </group>
 
           {/* ── ARMORED HULL ── */}
-          <mesh position={[0, 0.12, 0]} castShadow>
-            <boxGeometry args={[3.0, 0.62, 1.9]} />
+          <mesh position={[0, 0.1, 0]} castShadow>
+            <boxGeometry args={[3.0, 0.6, 1.9]} />
             <meshLambertMaterial color={palette.primary} />
           </mesh>
-          <mesh position={[0.15, 0.44, 0]} castShadow>
-            <boxGeometry args={[2.3, 0.4, 1.7]} />
+          <mesh position={[0.2, 0.42, 0]} castShadow>
+            <boxGeometry args={[2.2, 0.38, 1.7]} />
             <meshLambertMaterial color={palette.light} />
           </mesh>
-          <mesh position={[1.3, 0.22, 0]} rotation={[0, 0, -0.55]} castShadow>
-            <boxGeometry args={[0.8, 0.58, 1.85]} />
+          <mesh position={[1.3, 0.22, 0]} rotation={[0, 0, -0.5]} castShadow>
+            <boxGeometry args={[0.8, 0.55, 1.85]} />
             <meshLambertMaterial color={palette.primary} />
           </mesh>
 
-          {/* ── ROUNDED TURRET & CANNON ── */}
-          <group ref={turretRef} position={[0.08, 0.8, 0]}>
-            <mesh position={[0, 0.05, 0]} castShadow>
-              <cylinderGeometry args={[0.98, 1.08, 0.32, 16]} />
+          {/* ── ANGULAR TURRET ── */}
+          <group ref={turretRef} position={[0.1, 0.75, 0]}>
+            <mesh position={[0, 0, 0]} castShadow>
+              <boxGeometry args={[1.8, 0.55, 1.5]} />
               <meshLambertMaterial color={palette.primary} />
             </mesh>
-            <mesh position={[0.05, 0.26, 0]} castShadow>
-              <sphereGeometry args={[0.86, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2]} />
+            <mesh position={[0.05, 0.28, 0]} castShadow>
+              <boxGeometry args={[1.5, 0.35, 1.3]} />
               <meshLambertMaterial color={palette.light} />
             </mesh>
 
@@ -202,66 +209,68 @@ export const EnemyTank = forwardRef<EnemyTankHandle, EnemyTankProps>(
         </group>
 
         {/* ── HIGH CONTRAST GLOSSY ANSWER BADGE (CAM-FACING) ── */}
-        <Html
-          position={[0, 3.2, 0]}
-          center
-          distanceFactor={18}
-          zIndexRange={[100, 0]}
-          style={{ pointerEvents: 'none' }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              background: 'linear-gradient(135deg, rgba(15,23,42,0.94), rgba(30,41,59,0.92))',
-              border: `2px solid ${palette.light}`,
-              borderRadius: '24px',
-              padding: '6px 16px 6px 8px',
-              boxShadow: `0 8px 24px rgba(0,0,0,0.6), 0 0 16px ${palette.light}44`,
-              backdropFilter: 'blur(8px)',
-              whiteSpace: 'nowrap',
-              userSelect: 'none',
-              transform: 'translateY(-10px)',
-              animation: 'popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-            }}
+        {showBadge && (
+          <Html
+            position={[0, 3.2, 0]}
+            center
+            distanceFactor={18}
+            zIndexRange={[15, 0]}
+            style={{ pointerEvents: 'none' }}
           >
-            {/* Letter Disc Badge */}
             <div
               style={{
-                width: '28px',
-                height: '28px',
-                borderRadius: '50%',
-                background: palette.primary,
-                color: '#ffffff',
-                fontFamily: "'Orbitron', monospace",
-                fontWeight: 900,
-                fontSize: '14px',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
-                border: '1.5px solid #ffffff',
+                gap: '8px',
+                background: 'linear-gradient(135deg, rgba(15,23,42,0.94), rgba(30,41,59,0.92))',
+                border: `2px solid ${palette.light}`,
+                borderRadius: '24px',
+                padding: '6px 16px 6px 8px',
+                boxShadow: `0 8px 24px rgba(0,0,0,0.6), 0 0 16px ${palette.light}44`,
+                backdropFilter: 'blur(8px)',
+                whiteSpace: 'nowrap',
+                userSelect: 'none',
+                transform: 'translateY(-10px)',
+                animation: 'popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
               }}
             >
-              {letter}
-            </div>
+              {/* Letter Disc Badge */}
+              <div
+                style={{
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '50%',
+                  background: palette.primary,
+                  color: '#ffffff',
+                  fontFamily: "'Orbitron', monospace",
+                  fontWeight: 900,
+                  fontSize: '14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
+                  border: '1.5px solid #ffffff',
+                }}
+              >
+                {letter}
+              </div>
 
-            {/* Answer Text */}
-            <span
-              style={{
-                color: '#ffffff',
-                fontFamily: "'Rajdhani', sans-serif",
-                fontWeight: 700,
-                fontSize: '16px',
-                letterSpacing: '0.04em',
-                textShadow: '0 2px 4px rgba(0,0,0,0.8)',
-              }}
-            >
-              {target.optionText}
-            </span>
-          </div>
-        </Html>
+              {/* Answer Text */}
+              <span
+                style={{
+                  color: '#ffffff',
+                  fontFamily: "'Rajdhani', sans-serif",
+                  fontWeight: 700,
+                  fontSize: '16px',
+                  letterSpacing: '0.04em',
+                  textShadow: '0 2px 4px rgba(0,0,0,0.8)',
+                }}
+              >
+                {target.optionText}
+              </span>
+            </div>
+          </Html>
+        )}
       </group>
     );
   }
