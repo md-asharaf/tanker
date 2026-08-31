@@ -25,12 +25,12 @@ import './styles/index.css';
 function PortraitWarning() {
   return (
     <div className="portrait-warning" role="alert" aria-label="Rotate device to landscape">
-      <div style={{ fontSize: 52, marginBottom: 16 }}>📱</div>
-      <div style={{ fontFamily: 'var(--font-heading)', fontSize: 22, color: 'var(--col-gold)', marginBottom: 8 }}>
+      <div className="rotate-phone-anim">📱</div>
+      <div style={{ fontFamily: 'var(--font-heading)', fontSize: 24, color: 'var(--col-gold)', letterSpacing: '0.1em', marginBottom: 10 }}>
         ROTATE DEVICE
       </div>
-      <div style={{ color: '#94a3b8', fontSize: 14, lineHeight: 1.5 }}>
-        Landscape mode required for tank battlefield controls.
+      <div style={{ color: '#94a3b8', fontSize: 15, maxWidth: 320, lineHeight: 1.5, fontWeight: 600 }}>
+        Please rotate your device to landscape mode for battlefield combat.
       </div>
     </div>
   );

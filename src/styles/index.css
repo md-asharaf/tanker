@@ -604,42 +604,91 @@ html, body, #root {
 }
 .fire-btn-mobile:active { transform: scale(0.92); }
 
-/* ── STRICT PORTRAIT WARNING — NEVER DISPLAY ON DESKTOP ──────── */
+/* ── PORTRAIT ROTATE SCREEN ─────────────────────────────────── */
 .portrait-warning {
   display: none !important;
 }
 
-@media (hover: none) and (pointer: coarse) and (orientation: portrait) and (max-width: 650px) {
+@media (orientation: portrait) {
   .portrait-warning {
     display: flex !important;
     position: fixed;
     inset: 0;
     z-index: 999;
-    background: #0f172a;
+    background: radial-gradient(circle at center, #1e293b, #0f172a);
     flex-direction: column;
     align-items: center;
     justify-content: center;
     text-align: center;
-    padding: 24px;
+    padding: 32px 24px;
   }
 }
 
-/* ── Responsive Mobile Landscape ─────────────────────────────── */
-@media (max-height: 520px) and (orientation: landscape) {
+.rotate-phone-anim {
+  font-size: 58px;
+  margin-bottom: 20px;
+  display: inline-block;
+  animation: phoneRotate 2s ease-in-out infinite alternate;
+}
+
+@keyframes phoneRotate {
+  0%   { transform: rotate(0deg) scale(1); }
+  50%  { transform: rotate(-90deg) scale(1.1); }
+  100% { transform: rotate(-90deg) scale(1.1); }
+}
+
+/* ── Comprehensive Mobile & Touchscreen Ergonomics ───────────── */
+@media (hover: none) and (pointer: coarse) {
   .mobile-controls {
-    display: flex;
+    display: flex !important;
     position: absolute;
-    bottom: 10px;
+    bottom: 14px;
     left: 0;
     right: 0;
     justify-content: space-between;
     align-items: flex-end;
-    padding: 0 12px;
+    padding: 0 16px;
     pointer-events: none;
-    z-index: 20;
+    z-index: 30;
   }
   .mobile-controls > * { pointer-events: auto; }
-  .top-utility-bar { top: 8px; left: 8px; padding: 4px 8px; }
-  .arcade-question-header { top: 8px; padding: 6px 16px; }
-  .score-panel { top: 8px; right: 8px; padding: 4px 12px; }
+
+  /* Compact Top Header for Mobile */
+  .top-utility-bar {
+    top: 10px;
+    left: 10px;
+    padding: 4px 8px;
+    gap: 6px;
+  }
+  .top-utility-bar .btn-text {
+    display: none;
+  }
+  .ctrl-btn-compact {
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+
+  .arcade-question-header {
+    top: 10px;
+    padding: 6px 14px;
+    max-width: min(65vw, 460px);
+  }
+  .arcade-question-prompt {
+    font-size: clamp(12px, 2.5vw, 15px);
+  }
+
+  .score-panel {
+    top: 10px;
+    right: 10px;
+    padding: 4px 12px;
+  }
+  .score-value {
+    font-size: clamp(18px, 4vw, 24px);
+  }
+}
+
+@media (max-height: 520px) {
+  .arcade-question-header { top: 6px; }
+  .top-utility-bar { top: 6px; left: 6px; }
+  .score-panel { top: 6px; right: 6px; }
 }
