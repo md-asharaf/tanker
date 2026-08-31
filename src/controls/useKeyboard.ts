@@ -3,6 +3,8 @@ import { useEffect, useRef } from 'react';
 export interface KeyState {
   left: boolean;
   right: boolean;
+  up?: boolean;
+  down?: boolean;
 }
 
 export interface OneShotState {
@@ -14,13 +16,13 @@ export interface OneShotState {
 
 /**
  * Returns refs for:
- *  - `keys`    – held-down movement state (merged keyboard + touch)
+ *  - `keys`    – held-down movement and aim state (merged keyboard + touch)
  *  - `oneShot` – single-trigger actions consumed after first read
  *
  * Uses refs throughout — zero React re-renders.
  */
 export function useKeyboard() {
-  const keys    = useRef<KeyState>({ left: false, right: false });
+  const keys    = useRef<KeyState>({ left: false, right: false, up: false, down: false });
   const oneShot = useRef<OneShotState>({ fire: false, pause: false, hint: false, mute: false });
 
   useEffect(() => {
@@ -29,6 +31,8 @@ export function useKeyboard() {
       switch (e.code) {
         case 'KeyA': case 'ArrowLeft':  keys.current.left  = true;  break;
         case 'KeyD': case 'ArrowRight': keys.current.right = true;  break;
+        case 'KeyW': case 'ArrowUp':    keys.current.up    = true;  break;
+        case 'KeyS': case 'ArrowDown':  keys.current.down  = true;  break;
         case 'Space':
           e.preventDefault();
           oneShot.current.fire  = true;
@@ -49,6 +53,8 @@ export function useKeyboard() {
       switch (e.code) {
         case 'KeyA': case 'ArrowLeft':  keys.current.left  = false; break;
         case 'KeyD': case 'ArrowRight': keys.current.right = false; break;
+        case 'KeyW': case 'ArrowUp':    keys.current.up    = false; break;
+        case 'KeyS': case 'ArrowDown':  keys.current.down  = false; break;
       }
     };
 

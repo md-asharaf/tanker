@@ -55,18 +55,6 @@ export function LoadingOverlay() {
           >
             TANK TRIVIA
           </div>
-          <div
-            style={{
-              fontFamily: 'var(--font-heading)',
-              fontSize: 'clamp(12px, 2.8vw, 16px)',
-              fontWeight: 700,
-              color: '#81d4fa',
-              letterSpacing: '0.35em',
-              marginTop: 4,
-            }}
-          >
-            HILLS OF STEEL
-          </div>
         </div>
 
         {phase === 'menu' ? (

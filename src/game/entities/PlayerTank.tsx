@@ -184,6 +184,13 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
         else                      velocity.current = Math.min(0, velocity.current + decel * dt);
       }
 
+      // Optional keyboard elevation controls (W/S or Up/Down)
+      if (keys.current.up) {
+        cannonAngle.current = Math.min(1.4, cannonAngle.current + 1.4 * dt);
+      } else if (keys.current.down) {
+        cannonAngle.current = Math.max(-0.25, cannonAngle.current - 1.4 * dt);
+      }
+
       posX.current = Math.max(-75, Math.min(75, posX.current + velocity.current * dt));
 
       // Terrain Snapping & Ground Tangent Orientation

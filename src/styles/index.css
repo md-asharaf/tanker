@@ -113,11 +113,11 @@ html, body, #root {
   gap: 12px;
   background: linear-gradient(180deg, rgba(30, 41, 59, 0.96), rgba(15, 23, 42, 0.96));
   border: 2px solid rgba(255, 213, 79, 0.6);
-  border-radius: 40px;
+  border-radius: 28px;
   padding: 8px 24px 8px 10px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 24px rgba(255, 213, 79, 0.25);
   backdrop-filter: blur(8px);
-  max-width: min(82vw, 680px);
+  max-width: min(85vw, 760px);
 }
 
 .arcade-question-badge {
@@ -147,14 +147,13 @@ html, body, #root {
 }
 
 .arcade-question-prompt {
-  font-size: clamp(13px, 2vw, 18px);
+  font-size: clamp(13px, 1.8vw, 17px);
   font-weight: 800;
   color: #ffffff;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   text-shadow: 0 2px 4px rgba(0,0,0,0.8);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.35;
+  text-align: left;
 }
 
 /* ── Top Right Score Badge ───────────────────────────────────── */
