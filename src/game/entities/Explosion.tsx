@@ -1,32 +1,33 @@
 import { useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { secureRandom } from '../../utils/math';
 
 interface ExplosionProps {
-  position:   THREE.Vector3;
+  position: THREE.Vector3;
   onComplete: () => void;
-  type?:      'tank' | 'terrain';
+  type?: 'tank' | 'terrain';
 }
 
 const DEBRIS_COUNT = 28;
 
 export function Explosion({ position, onComplete, type = 'tank' }: ExplosionProps) {
-  const groupRef       = useRef<THREE.Group>(null);
-  const shockwave1Ref  = useRef<THREE.Mesh>(null);
-  const shockwave2Ref  = useRef<THREE.Mesh>(null);
-  const fireballRef    = useRef<THREE.Group>(null);
-  const smokeRef       = useRef<THREE.Group>(null);
-  const lightRef       = useRef<THREE.PointLight>(null);
-  const age            = useRef(0);
-  const duration       = type === 'tank' ? 1.25 : 0.75;
-  const done           = useRef(false);
+  const groupRef = useRef<THREE.Group>(null);
+  const shockwave1Ref = useRef<THREE.Mesh>(null);
+  const shockwave2Ref = useRef<THREE.Mesh>(null);
+  const fireballRef = useRef<THREE.Group>(null);
+  const smokeRef = useRef<THREE.Group>(null);
+  const lightRef = useRef<THREE.PointLight>(null);
+  const age = useRef(0);
+  const duration = type === 'tank' ? 1.25 : 0.75;
+  const done = useRef(false);
 
   // Ballistic debris trajectories
   const debrisVelocities = useRef<THREE.Vector3[]>(
     Array.from({ length: DEBRIS_COUNT }, () => {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = (Math.random() * 0.7 + 0.3) * (type === 'tank' ? 22 : 12);
-      const elevation = Math.random() * 16 + 4;
+      const angle = secureRandom() * Math.PI * 2;
+      const speed = (secureRandom() * 0.7 + 0.3) * (type === 'tank' ? 22 : 12);
+      const elevation = secureRandom() * 16 + 4;
       return new THREE.Vector3(
         Math.cos(angle) * speed,
         elevation,
@@ -51,7 +52,6 @@ export function Explosion({ position, onComplete, type = 'tank' }: ExplosionProp
       return;
     }
 
-    // 1. Dynamic Point Light Flash
     if (lightRef.current) {
       if (t < 0.2) {
         lightRef.current.intensity = (1 - t / 0.2) * (type === 'tank' ? 18 : 8);
@@ -200,8 +200,8 @@ export function Explosion({ position, onComplete, type = 'tank' }: ExplosionProp
           const color = isSpark
             ? (i % 2 === 0 ? '#ffff00' : '#ff9100')
             : type === 'tank'
-            ? (i % 3 === 0 ? '#424242' : i % 3 === 1 ? '#ff5722' : '#212121')
-            : (i % 2 === 0 ? '#5d4037' : '#795548');
+              ? (i % 3 === 0 ? '#424242' : i % 3 === 1 ? '#ff5722' : '#212121')
+              : (i % 2 === 0 ? '#5d4037' : '#795548');
 
           return (
             <mesh key={i}>

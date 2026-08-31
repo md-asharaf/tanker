@@ -1,7 +1,4 @@
-// ─────────────────────────────────────────────────────────────────
-//  AudioManager — Web Audio API synthesized arcade sounds
-//  Auto-unlocks on first user interaction (click / keydown / touch)
-// ─────────────────────────────────────────────────────────────────
+import { secureRandom } from '../utils/math';
 
 type SoundName =
   | 'fire'
@@ -79,7 +76,7 @@ class AudioManagerClass {
     const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.45), ctx.sampleRate);
     const data = buf.getChannelData(0);
     for (let i = 0; i < data.length; i++) {
-      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.07));
+      data[i] = (secureRandom() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.07));
     }
     const src = ctx.createBufferSource();
     src.buffer = buf;
@@ -121,7 +118,7 @@ class AudioManagerClass {
     const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.35), ctx.sampleRate);
     const data = buf.getChannelData(0);
     for (let i = 0; i < data.length; i++) {
-      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.05));
+      data[i] = (secureRandom() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.05));
     }
     const src = ctx.createBufferSource();
     src.buffer = buf;
@@ -152,7 +149,7 @@ class AudioManagerClass {
     const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 1.2), ctx.sampleRate);
     const data = buf.getChannelData(0);
     for (let i = 0; i < data.length; i++) {
-      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.22));
+      data[i] = (secureRandom() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.22));
     }
     const src = ctx.createBufferSource();
     src.buffer = buf;

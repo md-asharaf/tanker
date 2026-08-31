@@ -1,6 +1,16 @@
 // ─────────────────────────────────────────────────────────────────
-//  Math utilities
+//  Math & Secure Cryptographic Utilities
 // ─────────────────────────────────────────────────────────────────
+
+/** Cryptographically secure pseudorandom float in [0, 1) */
+export function secureRandom(): number {
+  if (typeof window !== 'undefined' && window.crypto && typeof window.crypto.getRandomValues === 'function') {
+    const arr = new Uint32Array(1);
+    window.crypto.getRandomValues(arr);
+    return arr[0] / 4294967296; // 2^32
+  }
+  return Math.random();
+}
 
 /** Linear interpolation */
 export function lerp(a: number, b: number, t: number): number {
@@ -60,22 +70,22 @@ export function distToSegment2D(
   return Math.hypot(px - projX, py - projY);
 }
 
-/** Fisher-Yates shuffle */
+/** Fisher-Yates shuffle with secure random */
 export function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(secureRandom() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
 }
 
-/** Random float between min and max */
+/** Random float between min and max using secureRandom */
 export function randFloat(min: number, max: number): number {
-  return min + Math.random() * (max - min);
+  return min + secureRandom() * (max - min);
 }
 
-/** Random integer between min and max (inclusive) */
+/** Random integer between min and max (inclusive) using secureRandom */
 export function randInt(min: number, max: number): number {
   return Math.floor(randFloat(min, max + 1));
 }

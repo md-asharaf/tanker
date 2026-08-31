@@ -3,9 +3,10 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { GAME_CONFIG } from '../gameConfig';
 import { getTerrainHeight, getTerrainAngle } from '../scene/Terrain';
-import { ballisticPositions } from '../../utils/math';
+import { ballisticPositions, secureRandom } from '../../utils/math';
 import { AudioManager } from '../../audio/AudioManager';
 import type { KeyState } from '../../controls/useKeyboard';
+import { TankRoadwheels } from './TankRoadwheels';
 
 const CFG = GAME_CONFIG;
 
@@ -93,7 +94,7 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
 
       if (flashRef.current) {
         flashRef.current.visible = true;
-        flashRef.current.scale.setScalar(1.3 + Math.random() * 0.4);
+        flashRef.current.scale.setScalar(1.3 + secureRandom() * 0.4);
         setTimeout(() => { if (flashRef.current) flashRef.current.visible = false; }, 90);
       }
     }, [onFire]);
@@ -173,39 +174,7 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
       // Fire trigger
       if (fireSignal.current) {
         fireSignal.current = false;
-        recoilTimer.current = 0.25;
-
-        // Local muzzle offset
-        const cElev = Math.cos(cannonAngle.current);
-        const sElev = Math.sin(cannonAngle.current);
-        const localMuzzleX = facing.current * (0.6 + cElev * 3.2);
-        const localMuzzleY = 1.02 + sElev * 3.2;
-
-        // Transform local muzzle offset to world space via ground slope
-        const muzzleX = posX.current + (cosS * localMuzzleX - sinS * localMuzzleY);
-        const muzzleY = (h + 0.65) + (sinS * localMuzzleX + cosS * localMuzzleY);
-        const muzzle = new THREE.Vector3(muzzleX, muzzleY, 0);
-
-        // Transform launch direction vector to world space
-        const localDirX = facing.current * cElev;
-        const localDirY = sElev;
-        const worldDirX = cosS * localDirX - sinS * localDirY;
-        const worldDirY = sinS * localDirX + cosS * localDirY;
-
-        const vel = new THREE.Vector3(
-          worldDirX * CFG.projectile.speed + velocity.current,
-          worldDirY * CFG.projectile.speed,
-          0
-        );
-
-        AudioManager.play('fire');
-        onFire?.(muzzle, vel);
-
-        if (flashRef.current) {
-          flashRef.current.visible = true;
-          flashRef.current.scale.setScalar(1.3 + Math.random() * 0.4);
-          setTimeout(() => { if (flashRef.current) flashRef.current.visible = false; }, 90);
-        }
+        executeFire();
       }
 
       if (paused) return;
@@ -326,24 +295,15 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
           </mesh>
 
           {/* 5 Big Roadwheels */}
-          <group ref={wheelsRef}>
-            {wheelXs.map((wx, i) => (
-              <group key={`wheel-${i}`} position={[wx, -0.36, 1.1]}>
-                <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
-                  <cylinderGeometry args={[0.34, 0.34, 0.28, 16]} />
-                  <meshLambertMaterial color="#1a1a1a" />
-                </mesh>
-                <mesh position={[0, 0, 0.15]} rotation={[Math.PI / 2, 0, 0]}>
-                  <cylinderGeometry args={[0.24, 0.24, 0.04, 16]} />
-                  <meshLambertMaterial color={WHEEL_RIM} />
-                </mesh>
-                <mesh position={[0, 0, 0.18]} rotation={[Math.PI / 2, 0, 0]}>
-                  <cylinderGeometry args={[0.1, 0.1, 0.05, 8]} />
-                  <meshLambertMaterial color={WHEEL_HUB} />
-                </mesh>
-              </group>
-            ))}
-          </group>
+          <TankRoadwheels
+            ref={wheelsRef}
+            wheelXs={wheelXs}
+            zOffset={1.1}
+            radius={0.34}
+            width={0.28}
+            hubRadius={0.24}
+            hubColor={WHEEL_RIM}
+          />
 
           {/* ── ARMORED HULL ── */}
           <mesh position={[0, 0.12, 0]} castShadow>

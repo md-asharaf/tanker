@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useGameStore } from '../../game/gameStore';
 import { AudioManager } from '../../audio/AudioManager';
+import { OverlayModal } from './OverlayModal';
 
 export function GameOverOverlay() {
   const {
@@ -32,38 +33,39 @@ export function GameOverOverlay() {
   };
 
   return (
-    <div className="overlay overlay--dim">
-      <div className="overlay-card anim-slide-up">
-        <div className="overlay-title overlay-title--gold">🏆 GAME COMPLETE</div>
-
-        <div className="stats-grid">
-          <div className="stat-item">
-            <div className="stat-label">Total Score</div>
-            <div className="stat-value">{score}</div>
-          </div>
-          <div className="stat-item">
-            <div className="stat-label">Accuracy</div>
-            <div className="stat-value">{Math.max(0, accuracy)}%</div>
-          </div>
-          <div className="stat-item">
-            <div className="stat-label">Best Streak</div>
-            <div className="stat-value" style={{ color: '#ff7700' }}>🔥{bestStreak}</div>
-          </div>
-          <div className="stat-item">
-            <div className="stat-label">Questions</div>
-            <div className="stat-value">{answered}/{total}</div>
-          </div>
-        </div>
-
-        <div className="btn-row">
+    <OverlayModal
+      title="🏆 GAME COMPLETE"
+      titleType="gold"
+      animationClass="anim-slide-up"
+      footer={
+        <>
           <button className="btn btn--primary" onClick={handlePlayAgain} aria-label="Play again with same questions">
             ↺ PLAY AGAIN
           </button>
           <button className="btn btn--secondary" onClick={handleNewGame} aria-label="Start new game">
             ⊕ NEW GAME
           </button>
+        </>
+      }
+    >
+      <div className="stats-grid">
+        <div className="stat-item">
+          <div className="stat-label">Total Score</div>
+          <div className="stat-value">{score}</div>
+        </div>
+        <div className="stat-item">
+          <div className="stat-label">Accuracy</div>
+          <div className="stat-value">{Math.max(0, accuracy)}%</div>
+        </div>
+        <div className="stat-item">
+          <div className="stat-label">Best Streak</div>
+          <div className="stat-value" style={{ color: '#ff7700' }}>🔥{bestStreak}</div>
+        </div>
+        <div className="stat-item">
+          <div className="stat-label">Questions</div>
+          <div className="stat-value">{answered}/{total}</div>
         </div>
       </div>
-    </div>
+    </OverlayModal>
   );
 }

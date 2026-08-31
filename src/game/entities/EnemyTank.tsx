@@ -5,8 +5,9 @@ import * as THREE from 'three';
 import type { TankTarget, TankLifecycle } from '../gameTypes';
 import { GAME_CONFIG } from '../gameConfig';
 import { getTerrainHeight, getTerrainAngle } from '../scene/Terrain';
-import { randFloat, randInt } from '../../utils/math';
+import { randFloat, randInt, secureRandom } from '../../utils/math';
 import { useGameStore } from '../gameStore';
+import { TankRoadwheels } from './TankRoadwheels';
 
 export interface EnemyTankHandle {
   triggerHit:  () => void;
@@ -41,7 +42,7 @@ export const EnemyTank = forwardRef<EnemyTankHandle, EnemyTankProps>(
     // AI state
     const posX         = useRef(initialX);
     const speed        = useRef(randFloat(GAME_CONFIG.enemyTank.minSpeed, GAME_CONFIG.enemyTank.maxSpeed));
-    const direction    = useRef(Math.random() < 0.5 ? 1 : -1);
+    const direction    = useRef(secureRandom() < 0.5 ? 1 : -1);
     const lifecycle    = useRef<TankLifecycle>('active');
     const nextTurn     = useRef(
       Date.now() + randInt(
@@ -85,7 +86,7 @@ export const EnemyTank = forwardRef<EnemyTankHandle, EnemyTankProps>(
 
       if (lifecycle.current === 'hit') {
         explodeTimer.current -= dt;
-        grp.rotation.z += (Math.random() - 0.5) * 0.3;
+        grp.rotation.z += (secureRandom() - 0.5) * 0.3;
         if (explodeTimer.current <= 0) {
           report('exploding');
           explodeTimer.current = 0.6;
@@ -154,20 +155,7 @@ export const EnemyTank = forwardRef<EnemyTankHandle, EnemyTankProps>(
           </mesh>
 
           {/* 5 Big Roadwheels */}
-          <group ref={wheelsRef}>
-            {wheelXs.map((wx, i) => (
-              <group key={`ew-${i}`} position={[wx, -0.36, 1.05]}>
-                <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
-                  <cylinderGeometry args={[0.32, 0.32, 0.25, 14]} />
-                  <meshLambertMaterial color="#1a1a1a" />
-                </mesh>
-                <mesh position={[0, 0, 0.14]} rotation={[Math.PI / 2, 0, 0]}>
-                  <cylinderGeometry args={[0.22, 0.22, 0.04, 14]} />
-                  <meshLambertMaterial color="#78909c" />
-                </mesh>
-              </group>
-            ))}
-          </group>
+          <TankRoadwheels ref={wheelsRef} wheelXs={wheelXs} zOffset={1.05} />
 
           {/* ── ARMORED HULL ── */}
           <mesh position={[0, 0.1, 0]} castShadow>
