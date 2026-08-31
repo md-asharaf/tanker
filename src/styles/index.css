@@ -29,11 +29,13 @@
 html, body, #root {
   width: 100%;
   height: 100%;
+  height: 100dvh;
   overflow: hidden;
   background: #29b6f6;
   font-family: var(--font-ui);
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
   touch-action: none;
   cursor: crosshair;
@@ -43,6 +45,7 @@ html, body, #root {
   position: relative;
   width: 100%;
   height: 100%;
+  height: 100dvh;
   overflow: hidden;
   cursor: crosshair;
 }
@@ -642,12 +645,11 @@ html, body, #root {
   .mobile-controls {
     display: flex !important;
     position: absolute;
-    bottom: 14px;
-    left: 0;
-    right: 0;
+    bottom: max(12px, env(safe-area-inset-bottom, 12px));
+    left: max(14px, env(safe-area-inset-left, 14px));
+    right: max(14px, env(safe-area-inset-right, 14px));
     justify-content: space-between;
     align-items: flex-end;
-    padding: 0 16px;
     pointer-events: none;
     z-index: 30;
   }
@@ -655,8 +657,8 @@ html, body, #root {
 
   /* Compact Top Header for Mobile */
   .top-utility-bar {
-    top: 10px;
-    left: 10px;
+    top: max(8px, env(safe-area-inset-top, 8px));
+    left: max(10px, env(safe-area-inset-left, 10px));
     padding: 4px 8px;
     gap: 6px;
   }
@@ -669,7 +671,7 @@ html, body, #root {
   }
 
   .arcade-question-header {
-    top: 10px;
+    top: max(8px, env(safe-area-inset-top, 8px));
     padding: 6px 14px;
     max-width: min(65vw, 460px);
   }
@@ -678,8 +680,8 @@ html, body, #root {
   }
 
   .score-panel {
-    top: 10px;
-    right: 10px;
+    top: max(8px, env(safe-area-inset-top, 8px));
+    right: max(10px, env(safe-area-inset-right, 10px));
     padding: 4px 12px;
   }
   .score-value {
