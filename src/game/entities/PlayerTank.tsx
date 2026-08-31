@@ -1,4 +1,4 @@
-import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { useRef, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { GAME_CONFIG } from '../gameConfig';
@@ -13,21 +13,22 @@ const CFG = GAME_CONFIG;
 //  Public handle exposed to parent
 // ─────────────────────────────────────────────────────────────────
 export interface PlayerTankHandle {
-  getPosition:    () => THREE.Vector3;
+  getPosition: () => THREE.Vector3;
   getCannonAngle: () => number;
-  getFacing:      () => number;
-  getVelocity:    () => number;
-  triggerRecoil:  () => void;
+  getFacing: () => number;
+  getVelocity: () => number;
+  triggerRecoil: () => void;
   setCannonAngle: (angle: number) => void;
-  setFacing:      (facing: number) => void;
+  setFacing: (facing: number) => void;
+  fire: () => void;
 }
 
 interface Props {
-  keys:               React.MutableRefObject<KeyState>;
-  fireSignal:         React.MutableRefObject<boolean>;
-  onFire?:            (origin: THREE.Vector3, velocity: THREE.Vector3) => void;
-  paused:             boolean;
-  showTrajectory:     boolean;
+  keys: React.MutableRefObject<KeyState>;
+  fireSignal: React.MutableRefObject<boolean>;
+  onFire?: (origin: THREE.Vector3, velocity: THREE.Vector3) => void;
+  paused: boolean;
+  showTrajectory: boolean;
   trajectoryGroupRef: React.RefObject<THREE.Group>;
 }
 
@@ -36,40 +37,81 @@ interface Props {
 // ─────────────────────────────────────────────────────────────────
 export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
   ({ keys, onFire, fireSignal, paused, showTrajectory, trajectoryGroupRef }, ref) => {
-    const groupRef    = useRef<THREE.Group>(null);
-    const chassisRef  = useRef<THREE.Group>(null);
-    const turretRef   = useRef<THREE.Group>(null);
-    const cannonRef   = useRef<THREE.Group>(null);
-    const flashRef    = useRef<THREE.Group>(null);
-    const wheelsRef   = useRef<THREE.Group>(null);
-    const exhaustRef  = useRef<THREE.Group>(null);
+    const groupRef = useRef<THREE.Group>(null);
+    const chassisRef = useRef<THREE.Group>(null);
+    const turretRef = useRef<THREE.Group>(null);
+    const cannonRef = useRef<THREE.Group>(null);
+    const flashRef = useRef<THREE.Group>(null);
+    const wheelsRef = useRef<THREE.Group>(null);
+    const exhaustRef = useRef<THREE.Group>(null);
 
     // High-frequency physics & aiming state
-    const velocity    = useRef(0);
-    const posX        = useRef(-22);
+    const velocity = useRef(0);
+    const posX = useRef(-22);
     const cannonAngle = useRef(0.45); // Elevation angle in radians
-    const facing      = useRef<1 | -1>(1); // 1 = facing right, -1 = facing left
+    const facing = useRef<1 | -1>(1); // 1 = facing right, -1 = facing left
     const recoilTimer = useRef(0);
-    const hasFired    = useRef(false);
 
     // Mouse aim world position tracking
     const mouseAim = useRef({ x: 0, y: 0, active: false });
 
     const { camera, raycaster, size } = useThree();
 
+    const executeFire = useCallback(() => {
+      const h = getTerrainHeight(posX.current);
+      const slope = getTerrainAngle(posX.current);
+      const cosS = Math.cos(slope);
+      const sinS = Math.sin(slope);
+
+      recoilTimer.current = 0.25;
+
+      // Local muzzle offset
+      const cElev = Math.cos(cannonAngle.current);
+      const sElev = Math.sin(cannonAngle.current);
+      const localMuzzleX = facing.current * (0.6 + cElev * 3.2);
+      const localMuzzleY = 1.02 + sElev * 3.2;
+
+      // Transform local muzzle offset to world space via ground slope
+      const muzzleX = posX.current + (cosS * localMuzzleX - sinS * localMuzzleY);
+      const muzzleY = (h + 0.65) + (sinS * localMuzzleX + cosS * localMuzzleY);
+      const muzzle = new THREE.Vector3(muzzleX, muzzleY, 0);
+
+      // Transform launch direction vector to world space
+      const localDirX = facing.current * cElev;
+      const localDirY = sElev;
+      const worldDirX = cosS * localDirX - sinS * localDirY;
+      const worldDirY = sinS * localDirX + cosS * localDirY;
+
+      const vel = new THREE.Vector3(
+        worldDirX * CFG.projectile.speed + velocity.current,
+        worldDirY * CFG.projectile.speed,
+        0
+      );
+
+      AudioManager.play('fire');
+      onFire?.(muzzle, vel);
+
+      if (flashRef.current) {
+        flashRef.current.visible = true;
+        flashRef.current.scale.setScalar(1.3 + Math.random() * 0.4);
+        setTimeout(() => { if (flashRef.current) flashRef.current.visible = false; }, 90);
+      }
+    }, [onFire]);
+
     // ── Public handle ─────────────────────────────────────────────
     useImperativeHandle(ref, () => ({
-      getPosition:    () => new THREE.Vector3(posX.current, getTerrainHeight(posX.current), 0),
+      getPosition: () => new THREE.Vector3(posX.current, getTerrainHeight(posX.current), 0),
       getCannonAngle: () => cannonAngle.current,
-      getFacing:      () => facing.current,
-      getVelocity:    () => velocity.current,
-      triggerRecoil:  () => { recoilTimer.current = 0.25; },
+      getFacing: () => facing.current,
+      getVelocity: () => velocity.current,
+      triggerRecoil: () => { recoilTimer.current = 0.25; },
       setCannonAngle: (a: number) => {
         cannonAngle.current = Math.max(-0.25, Math.min(1.4, a));
       },
       setFacing: (f: number) => {
         facing.current = f >= 0 ? 1 : -1;
       },
+      fire: executeFire,
     }));
 
     // ── Mouse / Touch Aim-to-Cursor Listener ──────────────────────
@@ -123,14 +165,14 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
       if (!grp) return;
       const dt = Math.min(delta, 0.05);
 
-      const h     = getTerrainHeight(posX.current);
+      const h = getTerrainHeight(posX.current);
       const slope = getTerrainAngle(posX.current);
-      const cosS  = Math.cos(slope);
-      const sinS  = Math.sin(slope);
+      const cosS = Math.cos(slope);
+      const sinS = Math.sin(slope);
 
       // Fire trigger
       if (fireSignal.current) {
-        fireSignal.current  = false;
+        fireSignal.current = false;
         recoilTimer.current = 0.25;
 
         // Local muzzle offset
@@ -180,7 +222,7 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
         if (!mouseAim.current.active) facing.current = 1;
       } else {
         if (velocity.current > 0) velocity.current = Math.max(0, velocity.current - decel * dt);
-        else                      velocity.current = Math.min(0, velocity.current + decel * dt);
+        else velocity.current = Math.min(0, velocity.current + decel * dt);
       }
 
       // Optional keyboard elevation controls (W/S or Up/Down)
@@ -221,7 +263,6 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
           cannonRef.current.position.x = 0.5 - (recoilTimer.current / 0.25) * 0.35;
         } else {
           cannonRef.current.position.x = 0.5;
-          hasFired.current = false;
         }
       }
 
@@ -261,14 +302,14 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
       }
     });
 
-    const HULL_GREEN    = '#2e7d32';
-    const HULL_LIGHT    = '#43a047';
-    const TREAD_COLOR   = '#212121';
-    const WHEEL_RIM     = '#78909c';
-    const WHEEL_HUB     = '#cfd8dc';
-    const CANNON_STEEL  = '#37474f';
-    const EMBLEM_GOLD   = '#ffd54f';
-    const wheelXs       = [-1.4, -0.7, 0, 0.7, 1.4];
+    const HULL_GREEN = '#2e7d32';
+    const HULL_LIGHT = '#43a047';
+    const TREAD_COLOR = '#212121';
+    const WHEEL_RIM = '#78909c';
+    const WHEEL_HUB = '#cfd8dc';
+    const CANNON_STEEL = '#37474f';
+    const EMBLEM_GOLD = '#ffd54f';
+    const wheelXs = [-1.4, -0.7, 0, 0.7, 1.4];
 
     return (
       <group ref={groupRef}>

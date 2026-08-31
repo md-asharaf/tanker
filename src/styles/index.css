@@ -218,16 +218,17 @@ html, body, #root {
    OVERLAYS (LOADING, RESULTS, GAME OVER)
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 .overlay {
-  position: absolute;
+  position: fixed;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 50;
+  z-index: 9999;
+  pointer-events: auto;
 }
 .overlay--dim {
-  background: rgba(10, 15, 29, 0.82);
-  backdrop-filter: blur(8px);
+  background: rgba(10, 15, 29, 0.92);
+  backdrop-filter: blur(14px);
 }
 
 .overlay-card {
@@ -559,53 +560,64 @@ html, body, #root {
 
 .move-group {
   display: flex;
-  gap: 10px;
+  gap: 14px;
 }
 
 .move-btn {
-  width: 58px;
-  height: 58px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
-  background: rgba(15, 23, 42, 0.85);
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.94), rgba(15, 23, 42, 0.96));
+  border: 2.5px solid rgba(255, 213, 79, 0.6);
   color: #ffffff;
-  font-size: 22px;
+  font-size: 26px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 6px 16px rgba(0,0,0,0.5);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.6), 0 0 14px rgba(255, 213, 79, 0.2);
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform 0.1s ease, background 0.1s ease;
 }
 .move-btn:active {
-  background: rgba(255, 213, 79, 0.3);
-  border-color: var(--col-gold);
+  background: rgba(255, 213, 79, 0.4);
+  border-color: #ffe082;
+  transform: scale(0.92);
 }
 
 .fire-group {
   display: flex;
   align-items: center;
-  gap: 10px;
 }
 
 .fire-btn-mobile {
-  width: 78px;
-  height: 78px;
+  width: 86px;
+  height: 86px;
   border-radius: 50%;
-  background: radial-gradient(circle, #e53935, #b71c1c);
-  border: 3px solid #ff8a80;
+  background: radial-gradient(circle at 35% 35%, #ff5252, #d32f2f 60%, #b71c1c);
+  border: 3.5px solid #ff8a80;
   color: #ffffff;
   font-family: var(--font-heading);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 900;
+  letter-spacing: 0.08em;
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
-  box-shadow: 0 8px 24px rgba(229, 57, 53, 0.6);
+  line-height: 1.1;
+  box-shadow: 0 10px 30px rgba(211, 47, 47, 0.7), 0 0 20px rgba(255, 82, 82, 0.4);
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform 0.08s ease;
 }
-.fire-btn-mobile:active { transform: scale(0.92); }
+.fire-btn-mobile:active {
+  transform: scale(0.9);
+  box-shadow: 0 4px 12px rgba(211, 47, 47, 0.9);
+}
 
 /* ── PORTRAIT ROTATE SCREEN ─────────────────────────────────── */
 .portrait-warning {

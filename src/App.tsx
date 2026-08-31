@@ -103,7 +103,7 @@ function KeyboardGuide() {
 }
 
 // ─────────────────────────────────────────────────────────────────
-//  Mobile controls — Dual thumb layout
+//  Mobile controls — Pure Dual Thumb Layout (No duplicate buttons)
 // ─────────────────────────────────────────────────────────────────
 interface MobileControlsProps {
   onLeftStart: () => void;
@@ -111,12 +111,10 @@ interface MobileControlsProps {
   onRightStart: () => void;
   onRightEnd: () => void;
   onFire: () => void;
-  onPause: () => void;
-  onHint: () => void;
 }
 
 function MobileControls({
-  onLeftStart, onLeftEnd, onRightStart, onRightEnd, onFire, onPause, onHint,
+  onLeftStart, onLeftEnd, onRightStart, onRightEnd, onFire,
 }: MobileControlsProps) {
   const { phase } = useGameStore();
   const visible = phase === 'playing' || phase === 'aiming' || phase === 'firing';
@@ -147,30 +145,13 @@ function MobileControls({
         >▶</button>
       </div>
 
-      {/* Right thumb — Fire & Utility */}
+      {/* Right thumb — Dedicated Arcade Fire Button */}
       <div className="fire-group">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <button
-            className="ctrl-btn-compact"
-            style={{ fontSize: 10, padding: '6px 12px' }}
-            aria-label="Pause game"
-            onTouchStart={(e) => { e.preventDefault(); onPause(); }}
-            onMouseDown={onPause}
-          >⏸</button>
-          <button
-            className="ctrl-btn-compact"
-            style={{ fontSize: 10, padding: '6px 12px' }}
-            aria-label="Show hint"
-            onTouchStart={(e) => { e.preventDefault(); onHint(); }}
-            onMouseDown={onHint}
-          >💡</button>
-        </div>
-
         <button
           className="fire-btn-mobile"
           aria-label="Fire cannon"
           onTouchStart={(e) => { e.preventDefault(); onFire(); }}
-          onMouseDown={onFire}
+          onMouseDown={(e) => { e.preventDefault(); onFire(); }}
         >
           🎯<br />FIRE
         </button>
@@ -187,11 +168,7 @@ export default function App() {
 
   // Fire action
   const handleFire = useCallback(() => {
-    const p = useGameStore.getState().phase;
-    if (p === 'playing' || p === 'aiming') {
-      useGameStore.getState().setPhase('firing');
-      sceneRef.current?.triggerFire();
-    }
+    sceneRef.current?.triggerFire();
   }, []);
 
   // Left click on game canvas fires cannon
@@ -210,18 +187,6 @@ export default function App() {
   const handleRightStart = useCallback(() => { sceneRef.current?.setMobileKeys({ right: true }); }, []);
   const handleRightEnd = useCallback(() => { sceneRef.current?.setMobileKeys({ right: false }); }, []);
 
-  const handlePause = useCallback(() => {
-    const p = useGameStore.getState().phase;
-    if (p === 'playing' || p === 'aiming') useGameStore.getState().setPhase('paused');
-    AudioManager.play('uiClick');
-  }, []);
-
-  const handleHint = useCallback(() => {
-    const p = useGameStore.getState().phase;
-    if (p === 'playing' || p === 'aiming') useGameStore.getState().setHintVisible(true);
-    AudioManager.play('uiClick');
-  }, []);
-
   return (
     <div className="game-root" onMouseDown={handleCanvasClick}>
       {/* 3D Game Scene */}
@@ -239,8 +204,6 @@ export default function App() {
           onRightStart={handleRightStart}
           onRightEnd={handleRightEnd}
           onFire={handleFire}
-          onPause={handlePause}
-          onHint={handleHint}
         />
       </div>
 

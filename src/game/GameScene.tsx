@@ -340,7 +340,13 @@ export const GameScene = forwardRef<GameSceneHandle, GameSceneProps>((_props, re
   useImperativeHandle(ref, () => ({
     setMobileKeys:  (k) => { Object.assign(externalKeys.current, k); },
     setCannonAngle: (a) => { playerRef.current?.setCannonAngle(a); },
-    triggerFire:    ()  => { fireSignal.current = true; },
+    triggerFire:    ()  => {
+      const p = useGameStore.getState().phase;
+      if (p === 'playing' || p === 'aiming') {
+        useGameStore.getState().setPhase('firing');
+        playerRef.current?.fire();
+      }
+    },
   }));
 
   return (
