@@ -619,45 +619,12 @@ html, body, #root {
   box-shadow: 0 4px 12px rgba(211, 47, 47, 0.9);
 }
 
-/* ── PORTRAIT ROTATE SCREEN ─────────────────────────────────── */
-.portrait-warning {
-  display: none !important;
-}
-
-@media (orientation: portrait) {
-  .portrait-warning {
-    display: flex !important;
-    position: fixed;
-    inset: 0;
-    z-index: 999;
-    background: radial-gradient(circle at center, #1e293b, #0f172a);
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 32px 24px;
-  }
-}
-
-.rotate-phone-anim {
-  font-size: 58px;
-  margin-bottom: 20px;
-  display: inline-block;
-  animation: phoneRotate 2s ease-in-out infinite alternate;
-}
-
-@keyframes phoneRotate {
-  0%   { transform: rotate(0deg) scale(1); }
-  50%  { transform: rotate(-90deg) scale(1.1); }
-  100% { transform: rotate(-90deg) scale(1.1); }
-}
-
-/* ── Comprehensive Mobile & Touchscreen Ergonomics ───────────── */
-@media (hover: none) and (pointer: coarse) {
+/* ── Universal Responsive Mobile & Touch Controls ───────────── */
+@media (hover: none) and (pointer: coarse), (max-width: 900px) {
   .mobile-controls {
     display: flex !important;
     position: absolute;
-    bottom: max(12px, env(safe-area-inset-bottom, 12px));
+    bottom: max(14px, env(safe-area-inset-bottom, 14px));
     left: max(14px, env(safe-area-inset-left, 14px));
     right: max(14px, env(safe-area-inset-right, 14px));
     justify-content: space-between;
@@ -666,13 +633,16 @@ html, body, #root {
     z-index: 30;
   }
   .mobile-controls > * { pointer-events: auto; }
+}
 
-  /* Compact Top Header for Mobile */
+/* ── Dedicated Portrait Layout (Phones & Tablets) ────────────── */
+@media (orientation: portrait) {
   .top-utility-bar {
-    top: max(8px, env(safe-area-inset-top, 8px));
-    left: max(10px, env(safe-area-inset-left, 10px));
+    top: max(10px, env(safe-area-inset-top, 10px));
+    left: max(12px, env(safe-area-inset-left, 12px));
     padding: 4px 8px;
     gap: 6px;
+    z-index: 25;
   }
   .top-utility-bar .btn-text {
     display: none;
@@ -682,29 +652,69 @@ html, body, #root {
     font-size: 13px;
   }
 
-  .arcade-question-header {
-    top: max(8px, env(safe-area-inset-top, 8px));
-    padding: 6px 14px;
-    max-width: min(65vw, 460px);
-  }
-  .arcade-question-prompt {
-    font-size: clamp(12px, 2.5vw, 15px);
-  }
-
   .score-panel {
-    top: max(8px, env(safe-area-inset-top, 8px));
-    right: max(10px, env(safe-area-inset-right, 10px));
+    top: max(10px, env(safe-area-inset-top, 10px));
+    right: max(12px, env(safe-area-inset-right, 12px));
     padding: 4px 12px;
+    z-index: 25;
   }
   .score-value {
-    font-size: clamp(18px, 4vw, 24px);
+    font-size: 20px;
+  }
+
+  /* Stacked Question Banner in Portrait */
+  .arcade-question-header {
+    top: max(54px, calc(env(safe-area-inset-top, 0px) + 48px));
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(92vw, 440px);
+    flex-direction: column;
+    align-items: stretch;
+    border-radius: 18px;
+    padding: 10px 14px;
+    gap: 6px;
+    z-index: 20;
+  }
+  .arcade-question-badge {
+    align-self: flex-start;
+    padding: 3px 8px;
+  }
+  .arcade-question-prompt {
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.35;
+    text-align: left;
+  }
+
+  .feedback-top-container {
+    top: max(148px, calc(env(safe-area-inset-top, 0px) + 140px));
+  }
+
+  .overlay-card {
+    width: min(92vw, 420px);
+    padding: 24px 20px;
+    border-radius: 20px;
   }
 }
 
-@media (max-height: 520px) {
-  .arcade-question-header { top: 6px; padding: 4px 12px; }
-  .top-utility-bar { top: 6px; left: 6px; }
-  .score-panel { top: 6px; right: 6px; }
+/* ── Landscape Layout Optimization ──────────────────────────── */
+@media (orientation: landscape) and (max-height: 520px) {
+  .arcade-question-header {
+    top: max(6px, env(safe-area-inset-top, 6px));
+    padding: 5px 14px;
+    max-width: min(65vw, 460px);
+  }
+  .top-utility-bar {
+    top: max(6px, env(safe-area-inset-top, 6px));
+    left: max(8px, env(safe-area-inset-left, 8px));
+  }
+  .top-utility-bar .btn-text {
+    display: none;
+  }
+  .score-panel {
+    top: max(6px, env(safe-area-inset-top, 6px));
+    right: max(8px, env(safe-area-inset-right, 8px));
+  }
 
   /* Compact Overlay Cards for Mobile Landscape */
   .overlay-card {

@@ -8,7 +8,7 @@ import {
   useImperativeHandle,
   Suspense,
 } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Terrain, getTerrainHeight } from './scene/Terrain';
 import { Environment } from './scene/Environment';
@@ -214,6 +214,7 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
 
   return (
     <>
+      <ResponsiveCamera />
       <ambientLight intensity={0.9} />
       <directionalLight
         position={[25, 45, 20]}
@@ -306,6 +307,31 @@ function EnemyTankWrapper({ target, initialX, paused, enemyRef }: WrapperProps) 
   });
 
   return <EnemyTank ref={localRef} target={target} initialX={initialX} paused={paused} />;
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Helper: Adaptive Responsive Camera (Smooth Portrait & Landscape)
+// ─────────────────────────────────────────────────────────────────
+function ResponsiveCamera() {
+  const { camera, size } = useThree();
+  useFrame(() => {
+    const aspect = size.width / Math.max(1, size.height);
+    const isPortrait = aspect < 1.0;
+    const targetFov = isPortrait ? 66 : 42;
+    const targetZ = isPortrait ? 38 : 23;
+    const targetY = isPortrait ? 8 : 5;
+    const targetX = isPortrait ? -14 : -22;
+
+    const cam = camera as THREE.PerspectiveCamera;
+    if (Math.abs(cam.fov - targetFov) > 0.05) {
+      cam.fov = THREE.MathUtils.lerp(cam.fov, targetFov, 0.1);
+      cam.updateProjectionMatrix();
+    }
+    cam.position.x = THREE.MathUtils.lerp(cam.position.x, targetX, 0.1);
+    cam.position.y = THREE.MathUtils.lerp(cam.position.y, targetY, 0.1);
+    cam.position.z = THREE.MathUtils.lerp(cam.position.z, targetZ, 0.1);
+  });
+  return null;
 }
 
 // ─────────────────────────────────────────────────────────────────
