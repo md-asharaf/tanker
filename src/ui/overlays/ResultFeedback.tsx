@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { useGameStore } from '../../game/gameStore';
 
 export function ResultFeedback() {
@@ -10,31 +9,31 @@ export function ResultFeedback() {
   const isWrong   = lastResult === 'wrong';
   const isMiss    = lastResult === 'miss';
 
-  return (
-    <div className="overlay" style={{ pointerEvents: 'none' }}>
-      <div className="anim-slide-up" style={{ textAlign: 'center' }}>
-        <div
-          className={`overlay-title ${
-            isCorrect ? 'overlay-title--correct' :
-            isWrong   ? 'overlay-title--wrong'   :
-                        'overlay-title--miss'
-          }`}
-          style={{ fontSize: 'clamp(28px, 5vw, 48px)', textShadow: '0 0 24px currentColor' }}
-        >
-          {isCorrect ? '✓ CORRECT!' : isWrong ? '✕ WRONG' : '○ MISS'}
-        </div>
+  const titleText = isCorrect
+    ? 'TARGET DESTROYED'
+    : isWrong
+    ? 'INCORRECT TARGET'
+    : 'MISSED SHOT';
 
-        <div
-          className={`overlay-score-delta ${
-            isCorrect ? 'delta--correct' : isWrong ? 'delta--wrong' : 'delta--miss'
-          }`}
-        >
-          {isCorrect ? '+100' : '−10'}
+  const deltaText = isCorrect ? '+100' : '−10';
+
+  const themeClass = isCorrect
+    ? 'feedback-banner--correct'
+    : isWrong
+    ? 'feedback-banner--wrong'
+    : 'feedback-banner--miss';
+
+  return (
+    <div className="feedback-top-container" role="status" aria-live="polite">
+      <div className={`feedback-banner ${themeClass}`}>
+        <div className="feedback-content">
+          <span className="feedback-title">{titleText}</span>
+          <span className="feedback-delta">{deltaText}</span>
         </div>
 
         {(isWrong || isMiss) && lastCorrectAnswer && (
-          <div className="overlay-answer">
-            Correct answer: <span>{lastCorrectAnswer}</span>
+          <div className="feedback-answer">
+            ANSWER: <strong>{lastCorrectAnswer}</strong>
           </div>
         )}
       </div>

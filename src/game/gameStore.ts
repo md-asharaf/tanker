@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { GAME_CONFIG } from './gameConfig';
+import { fetchQuiz } from '../api/quizApi';
 import type { GameState, GamePhase, ShotResult, QuizQuestion } from './gameTypes';
 import { INITIAL_GAME_STATE } from './gameTypes';
 
@@ -23,7 +24,7 @@ interface GameStore extends GameState {
   // Game flow
   startCountdown: () => void;
   restartGame: () => void;
-  newGame: () => void;
+  startNewGame: () => Promise<void>;
   setError: (msg: string) => void;
 }
 
@@ -35,7 +36,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   // ── Quiz data ──────────────────────────────────────────────────
   setQuestions: (questions) =>
-    set({ questions, currentQuestionIndex: 0, phase: 'ready' }),
+    set({ questions, currentQuestionIndex: 0, phase: 'countdown' }),
 
   // ── Shot resolution ────────────────────────────────────────────
   resolveShot: (result, correctAnswer) => {
@@ -104,12 +105,27 @@ export const useGameStore = create<GameStore>((set, get) => ({
       questionSessionId: 0,
     }),
 
-  newGame: () =>
+  startNewGame: async () => {
     set({
       ...INITIAL_GAME_STATE,
       muted: get().muted,
       phase: 'loading',
-    }),
+    });
+
+    try {
+      const questions = await fetchQuiz();
+      set({
+        questions,
+        currentQuestionIndex: 0,
+        phase: 'countdown',
+      });
+    } catch (e: unknown) {
+      set({
+        phase: 'error',
+        errorMessage: e instanceof Error ? e.message : 'Failed to fetch quiz questions.',
+      });
+    }
+  },
 
   setError: (msg) => set({ phase: 'error', errorMessage: msg }),
 }));

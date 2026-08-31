@@ -4,6 +4,7 @@
 
 /** All possible game phases — explicit state machine */
 export type GamePhase =
+  | 'menu'
   | 'loading'
   | 'error'
   | 'ready'
@@ -43,8 +44,8 @@ export interface TankTarget {
 export interface QuizQuestion {
   prompt: string;
   hint: string;
-  options: string[];    // exactly 4
-  answer: string;       // must be one of options
+  options: string[];
+  answer: string;
 }
 
 /** Top-level application game state (React-owned) */
@@ -70,9 +71,9 @@ export interface GameState {
   errorMessage: string | null;
 }
 
-/** Initial game state */
+/** Initial game state — starts on menu, zero API requests until user clicks Play */
 export const INITIAL_GAME_STATE: GameState = {
-  phase: 'loading',
+  phase: 'menu',
   questions: [],
   currentQuestionIndex: 0,
   score: 0,

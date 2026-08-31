@@ -1,12 +1,11 @@
 import { useEffect } from 'react';
 import { useGameStore } from '../../game/gameStore';
 import { AudioManager } from '../../audio/AudioManager';
-import { fetchQuiz } from '../../api/quizApi';
 
 export function GameOverOverlay() {
   const {
-    phase, score, bestStreak, questions, currentQuestionIndex,
-    restartGame, newGame, setQuestions, setError,
+    phase, score, bestStreak, questions,
+    restartGame, startNewGame,
   } = useGameStore();
 
   useEffect(() => {
@@ -27,21 +26,15 @@ export function GameOverOverlay() {
     restartGame();
   };
 
-  const handleNewGame = async () => {
+  const handleNewGame = () => {
     AudioManager.play('uiClick');
-    newGame(); // sets phase to loading
-    try {
-      const qs = await fetchQuiz();
-      setQuestions(qs);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unknown error');
-    }
+    startNewGame();
   };
 
   return (
     <div className="overlay overlay--dim">
       <div className="overlay-card anim-slide-up">
-        <div className="overlay-title overlay-title--gold">🏆 MISSION COMPLETE</div>
+        <div className="overlay-title overlay-title--gold">🏆 GAME COMPLETE</div>
 
         <div className="stats-grid">
           <div className="stat-item">
@@ -66,8 +59,8 @@ export function GameOverOverlay() {
           <button className="btn btn--primary" onClick={handlePlayAgain} aria-label="Play again with same questions">
             ↺ PLAY AGAIN
           </button>
-          <button className="btn btn--secondary" onClick={handleNewGame} aria-label="Fetch new questions">
-            ⊕ NEW MISSION
+          <button className="btn btn--secondary" onClick={handleNewGame} aria-label="Start new game">
+            ⊕ NEW GAME
           </button>
         </div>
       </div>

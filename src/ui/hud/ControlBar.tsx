@@ -1,15 +1,11 @@
 import { useGameStore } from '../../game/gameStore';
 import { AudioManager } from '../../audio/AudioManager';
 
-interface Props {
-  onFire: () => void;
-}
-
-export function ControlBar({ onFire }: Props) {
+export function ControlBar() {
   const { phase, muted, toggleMute, setHintVisible, setPhase } = useGameStore();
 
   const visible =
-    phase === 'playing' || phase === 'aiming' || phase === 'firing';
+    phase === 'playing' || phase === 'aiming' || phase === 'firing' || phase === 'hint';
 
   if (!visible) return null;
 
@@ -28,39 +24,20 @@ export function ControlBar({ onFire }: Props) {
     AudioManager.play('uiClick');
   };
 
-  const handleFire = () => {
-    AudioManager.play('uiClick');
-    onFire();
-  };
-
-  const canFire = phase === 'playing' || phase === 'aiming';
-
   return (
-    <div className="control-bar">
-      {/* Left buttons */}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button className="ctrl-btn" onClick={handlePause} aria-label="Pause game (P)">
-          ⏸ PAUSE
-        </button>
-        <button className="ctrl-btn" onClick={handleHint} aria-label="Use hint (H)">
-          💡 HINT
-        </button>
-      </div>
+    <div className="top-utility-bar">
+      <button className="ctrl-btn-compact" onClick={handlePause} title="Pause Game (P / Esc)" aria-label="Pause game">
+        <span className="btn-icon">⏸</span>
+        <span className="btn-text">PAUSE</span>
+      </button>
 
-      {/* Center: FIRE */}
-      {canFire && (
-        <button
-          className="ctrl-btn ctrl-btn--fire"
-          onClick={handleFire}
-          aria-label="Fire cannon (Space)"
-        >
-          🎯 FIRE
-        </button>
-      )}
+      <button className="ctrl-btn-compact" onClick={handleHint} title="Show Question Hint (H)" aria-label="Show hint">
+        <span className="btn-icon">💡</span>
+        <span className="btn-text">HINT</span>
+      </button>
 
-      {/* Right: Mute */}
-      <button className="ctrl-btn" onClick={handleMute} aria-label={muted ? 'Unmute' : 'Mute'}>
-        {muted ? '🔇' : '🔊'}
+      <button className="ctrl-btn-compact ctrl-btn-icon-only" onClick={handleMute} title={muted ? 'Unmute Sound (M)' : 'Mute Sound (M)'} aria-label={muted ? 'Unmute' : 'Mute'}>
+        <span className="btn-icon">{muted ? '🔇' : '🔊'}</span>
       </button>
     </div>
   );

@@ -17,11 +17,27 @@ export function HintModal() {
 
   return (
     <div className="overlay overlay--dim" onClick={dismiss}>
-      <div className="overlay-card anim-fade-in" onClick={(e) => e.stopPropagation()}>
-        <div className="overlay-title overlay-title--gold">💡 INTEL</div>
-        <div className="hint-text">{q?.hint ?? 'No hint available.'}</div>
-        <div className="btn-row">
-          <button className="btn btn--primary" onClick={dismiss} aria-label="Close hint">
+      <div
+        className="overlay-card anim-fade-in"
+        style={{ width: 'min(92vw, 480px)', padding: '28px 24px' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="overlay-title overlay-title--gold" style={{ marginBottom: 12 }}>
+          💡 HINT
+        </div>
+
+        {q?.prompt && (
+          <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 12, fontWeight: 600 }}>
+            Question: <span style={{ color: '#ffffff', fontWeight: 800 }}>"{q.prompt}"</span>
+          </div>
+        )}
+
+        <div className="hint-modal-body">
+          {q?.hint ? q.hint : 'Identify the correct definition target and destroy it.'}
+        </div>
+
+        <div className="btn-row" style={{ marginTop: 24 }}>
+          <button className="btn btn--primary" onClick={dismiss} style={{ minWidth: 160 }} aria-label="Close hint">
             GOT IT
           </button>
         </div>

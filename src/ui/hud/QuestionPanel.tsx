@@ -16,8 +16,8 @@ export function QuestionPanel() {
   return (
     <div className="arcade-question-header">
       <div className="arcade-question-badge">
-        <span className="q-tag">TARGET {String(num).padStart(2, '0')}</span>
-        <span className="q-total">OF {total}</span>
+        <span className="q-tag">Q {String(num).padStart(2, '0')}</span>
+        <span className="q-total">/ {total}</span>
       </div>
       <div className="arcade-question-prompt">
         {q.prompt}

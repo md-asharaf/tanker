@@ -271,53 +271,10 @@ class AudioManagerClass {
     });
   }
 
-  // ── Engine hum loop ─────────────────────────────────────────────
-  startEngine(): void {
-    if (this.muted || this.engineRunning) return;
-    const ctx = this.getCtx();
-    if (!ctx) return;
-    this.engineRunning = true;
-
-    try {
-      this.engineOsc = ctx.createOscillator();
-      this.engineGain = ctx.createGain();
-      this.engineOsc.type = 'sawtooth';
-      this.engineOsc.frequency.value = 45;
-      this.engineGain.gain.value = 0;
-      this.engineOsc.connect(this.engineGain);
-      this.engineGain.connect(ctx.destination);
-      this.engineOsc.start();
-      this.engineGain.gain.linearRampToValueAtTime(0.05, ctx.currentTime + 0.4);
-    } catch {
-      this.engineRunning = false;
-    }
-  }
-
-  stopEngine(): void {
-    if (!this.engineRunning) return;
-    this.engineRunning = false;
-    if (this.engineGain && this.ctx) {
-      try {
-        this.engineGain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.2);
-      } catch {}
-    }
-    setTimeout(() => {
-      try {
-        this.engineOsc?.stop();
-      } catch {}
-      this.engineOsc = null;
-      this.engineGain = null;
-    }, 250);
-  }
-
-  setEngineIntensity(throttle: number): void {
-    if (!this.engineRunning || !this.engineOsc || !this.engineGain || this.muted || !this.ctx) return;
-    const freq = 45 + throttle * 30;
-    try {
-      this.engineOsc.frequency.setTargetAtTime(freq, this.ctx.currentTime, 0.1);
-      this.engineGain.gain.setTargetAtTime(0.03 + throttle * 0.05, this.ctx.currentTime, 0.1);
-    } catch {}
-  }
+  // ── Engine hum disabled to prevent background buzzing noise ───
+  startEngine(): void {}
+  stopEngine(): void {}
+  setEngineIntensity(_throttle: number): void {}
 
   play(name: SoundName): void {
     switch (name) {
