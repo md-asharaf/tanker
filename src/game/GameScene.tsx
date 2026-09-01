@@ -487,6 +487,9 @@ function EnemyTankWrapper({ target, initialPos, paused, playerPosRef, enemyRef }
 
 // ─────────────────────────────────────────────────────────────────
 //  3D Centered Perspective Camera (Perfect View of Tank & 4 Ridges)
+// Pre-allocated math objects (Zero-GC)
+const _defaultPlayerPos = new THREE.Vector3(0, 0.5, 10.0);
+
 // ─────────────────────────────────────────────────────────────────
 function ResponsiveCamera({
   shakeRef,
@@ -503,7 +506,7 @@ function ResponsiveCamera({
 
     // Dynamic FOV to ensure all 4 ridges (-18 to +18) fit on narrow mobile screens (375px - 430px)
     const targetFov = isPortrait ? Math.max(54, Math.min(66, 38 / aspect)) : 44;
-    const playerPos = playerRef.current?.getPosition() ?? new THREE.Vector3(0, 0.5, 10.0);
+    const playerPos = playerRef.current?.getPosition() ?? _defaultPlayerPos;
 
     const cam = camera as THREE.PerspectiveCamera;
     if (Math.abs(cam.fov - targetFov) > 0.05) {

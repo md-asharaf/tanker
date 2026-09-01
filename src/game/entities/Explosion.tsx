@@ -13,13 +13,18 @@ const DEBRIS_COUNT = 36;
 const DUST_RING_COUNT = 14;
 const MUSHROOM_LOBES = 8;
 
-// ── Shared Pre-allocated Geometries (Zero-GC WebGL Buffer Reuse) ─
+// ── Shared Pre-allocated Geometries & Colors (Zero-GC WebGL Buffer Reuse) ─
 const geoSpark = new THREE.DodecahedronGeometry(0.16, 0);
 const geoDebrisChunk = new THREE.DodecahedronGeometry(0.3, 0);
 const geoShockwave = new THREE.RingGeometry(0.5, 1.6, 32);
 const geoFireSphere = new THREE.SphereGeometry(1.0, 14, 14);
 const geoSmokeSphere = new THREE.DodecahedronGeometry(0.95, 1);
 const geoDustPuff = new THREE.DodecahedronGeometry(0.65, 1);
+
+const _cExplodeFire = new THREE.Color('#ff5722');
+const _cExplodeSmoke = new THREE.Color('#263238');
+const _cEmissiveRed = new THREE.Color('#d50000');
+const _cEmissiveBlack = new THREE.Color('#000000');
 
 export function Explosion({ position, onComplete, type = 'tank' }: ExplosionProps) {
   const groupRef = useRef<THREE.Group>(null);
@@ -145,10 +150,10 @@ export function Explosion({ position, onComplete, type = 'tank' }: ExplosionProp
           mat.emissiveIntensity = 0.9 * (1 - t / 0.25);
           mat.opacity = 0.95;
         } else if (t < 0.6) {
-          // Flame to Dark Smoke transition
+          // Flame to Dark Smoke transition (Zero-GC)
           const blend = (t - 0.25) / 0.35;
-          mat.color.lerpColors(new THREE.Color('#ff5722'), new THREE.Color('#263238'), blend);
-          mat.emissive.lerpColors(new THREE.Color('#d50000'), new THREE.Color('#000000'), blend);
+          mat.color.lerpColors(_cExplodeFire, _cExplodeSmoke, blend);
+          mat.emissive.lerpColors(_cEmissiveRed, _cEmissiveBlack, blend);
           mat.emissiveIntensity = (1 - blend) * 0.5;
           mat.opacity = THREE.MathUtils.lerp(0.95, 0.75, blend);
         } else {

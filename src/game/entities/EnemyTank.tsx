@@ -133,6 +133,9 @@ function getLetterBadgeTexture(letter: string, accentColor: string): THREE.Canva
   return texture;
 }
 
+// Pre-allocated math objects (Zero-GC)
+const _defaultPlayerPos = new THREE.Vector3(0, 0.5, 10.0);
+
 export const EnemyTank = forwardRef<EnemyTankHandle, EnemyTankProps>(
   ({ target, initialPos, paused, playerPosRef, onLifecycleChange }, ref) => {
     const { phase } = useGameStore();
@@ -211,7 +214,7 @@ export const EnemyTank = forwardRef<EnemyTankHandle, EnemyTankProps>(
       if (paused) return;
 
       // ── ENEMY TANK & COMMANDER AIM DIRECTLY TOWARDS PLAYER TANK ──
-      const pPos = playerPosRef?.current ?? new THREE.Vector3(0, 0.5, 10.0);
+      const pPos = playerPosRef?.current ?? _defaultPlayerPos;
       const dx = pPos.x - posX;
       const dz = pPos.z - posZ;
       const dy = (pPos.y + 1.2) - (posY + 0.8);

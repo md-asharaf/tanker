@@ -17,6 +17,9 @@ interface ProjectileProps {
   onDestroy: () => void;
 }
 
+// ── Pre-allocated Math Objects (Zero-GC) ──────────────────────────
+const _vForward = new THREE.Vector3(0, 0, 1);
+const _dirVec = new THREE.Vector3();
 const TANK_HIT_RADIUS = 1.45;
 
 export function Projectile({
@@ -68,9 +71,9 @@ export function Projectile({
 
     if (meshRef.current) {
       meshRef.current.position.copy(pos.current);
-      // Orient bullet shell along flight trajectory in 3D
-      const dir = vel.current.clone().normalize();
-      meshRef.current.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
+      // Orient bullet shell along flight trajectory in 3D (Zero-GC)
+      _dirVec.copy(vel.current).normalize();
+      meshRef.current.quaternion.setFromUnitVectors(_vForward, _dirVec);
     }
 
     // Update sparkling particle trail in 3D
