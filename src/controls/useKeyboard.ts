@@ -22,56 +22,60 @@ export interface OneShotState {
  * Uses refs throughout — zero React re-renders.
  */
 export function useKeyboard() {
-  const keys    = useRef<KeyState>({ left: false, right: false, up: false, down: false });
+  const keys = useRef<KeyState>({ left: false, right: false, up: false, down: false });
   const oneShot = useRef<OneShotState>({ fire: false, pause: false, hint: false, mute: false });
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.repeat) return;
       switch (e.code) {
-        case 'KeyA': case 'ArrowLeft':  keys.current.left  = true;  break;
-        case 'KeyD': case 'ArrowRight': keys.current.right = true;  break;
-        case 'KeyW': case 'ArrowUp':    keys.current.up    = true;  break;
-        case 'KeyS': case 'ArrowDown':  keys.current.down  = true;  break;
+        case 'KeyA': case 'ArrowLeft': keys.current.left = true; break;
+        case 'KeyD': case 'ArrowRight': keys.current.right = true; break;
+        case 'KeyW': case 'ArrowUp': keys.current.up = true; break;
+        case 'KeyS': case 'ArrowDown': keys.current.down = true; break;
         case 'Space':
           e.preventDefault();
-          oneShot.current.fire  = true;
+          oneShot.current.fire = true;
+          break;
+        case 'Enter':
+        case 'NumpadEnter':
+          e.preventDefault();
           break;
         case 'KeyP': case 'Escape':
           oneShot.current.pause = true;
           break;
         case 'KeyH':
-          oneShot.current.hint  = true;
+          oneShot.current.hint = true;
           break;
         case 'KeyM':
-          oneShot.current.mute  = true;
+          oneShot.current.mute = true;
           break;
       }
     };
 
     const up = (e: KeyboardEvent) => {
       switch (e.code) {
-        case 'KeyA': case 'ArrowLeft':  keys.current.left  = false; break;
+        case 'KeyA': case 'ArrowLeft': keys.current.left = false; break;
         case 'KeyD': case 'ArrowRight': keys.current.right = false; break;
-        case 'KeyW': case 'ArrowUp':    keys.current.up    = false; break;
-        case 'KeyS': case 'ArrowDown':  keys.current.down  = false; break;
+        case 'KeyW': case 'ArrowUp': keys.current.up = false; break;
+        case 'KeyS': case 'ArrowDown': keys.current.down = false; break;
       }
     };
 
     const onBlur = () => {
-      keys.current.left  = false;
+      keys.current.left = false;
       keys.current.right = false;
-      keys.current.up    = false;
-      keys.current.down  = false;
+      keys.current.up = false;
+      keys.current.down = false;
     };
 
     window.addEventListener('keydown', down);
-    window.addEventListener('keyup',   up);
-    window.addEventListener('blur',    onBlur);
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', onBlur);
     return () => {
       window.removeEventListener('keydown', down);
-      window.removeEventListener('keyup',   up);
-      window.removeEventListener('blur',    onBlur);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', onBlur);
     };
   }, []);
 

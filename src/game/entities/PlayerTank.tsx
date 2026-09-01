@@ -6,7 +6,6 @@ import { getTerrainHeight, getTerrainAngle } from '../scene/Terrain';
 import { ballisticPositions, secureRandom } from '../../utils/math';
 import { AudioManager } from '../../audio/AudioManager';
 import type { KeyState } from '../../controls/useKeyboard';
-import { TankRoadwheels } from './TankRoadwheels';
 
 const CFG = GAME_CONFIG;
 
@@ -15,154 +14,197 @@ const CFG = GAME_CONFIG;
 // ─────────────────────────────────────────────────────────────────
 export interface PlayerTankHandle {
   getPosition: () => THREE.Vector3;
-  getCannonAngle: () => number;
-  getFacing: () => number;
   getVelocity: () => number;
   triggerRecoil: () => void;
-  setCannonAngle: (angle: number) => void;
-  setFacing: (facing: number) => void;
   fire: () => void;
 }
 
 interface Props {
   keys: React.MutableRefObject<KeyState>;
   fireSignal: React.MutableRefObject<boolean>;
+  enemyPositionsRef?: React.MutableRefObject<THREE.Vector3[]>;
   onFire?: (origin: THREE.Vector3, velocity: THREE.Vector3) => void;
   paused: boolean;
   showTrajectory: boolean;
   trajectoryGroupRef: React.RefObject<THREE.Group>;
 }
 
-// ── Pre-allocated Math Vectors (Zero-GC Optimization) ─────────────
-const _plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+// ── Pre-allocated Math Objects (Zero-GC Optimization) ─────────────
+const _targetPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 18.0); // vertical plane at Z = -18 (enemy ridges)
 const _planeIntersect = new THREE.Vector3();
 const _ndcVec = new THREE.Vector2();
+const _muzzleWorld = new THREE.Vector3();
+const _velWorld = new THREE.Vector3();
 
 // ─────────────────────────────────────────────────────────────────
-//  Chunky Stylized Player Tank (Hills of Steel Aesthetic)
+//  3D Realistic Player Tank with Heroic Tank Commander
 // ─────────────────────────────────────────────────────────────────
 export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
-  ({ keys, onFire, fireSignal, paused, showTrajectory, trajectoryGroupRef }, ref) => {
+  ({ keys, onFire, fireSignal, enemyPositionsRef, paused, showTrajectory, trajectoryGroupRef }, ref) => {
     const groupRef = useRef<THREE.Group>(null);
     const chassisRef = useRef<THREE.Group>(null);
     const turretRef = useRef<THREE.Group>(null);
     const cannonRef = useRef<THREE.Group>(null);
+    const commanderRef = useRef<THREE.Group>(null);
     const flashRef = useRef<THREE.Group>(null);
-    const wheelsRef = useRef<THREE.Group>(null);
+    const leftWheelsRef = useRef<THREE.Group>(null);
+    const rightWheelsRef = useRef<THREE.Group>(null);
     const exhaustRef = useRef<THREE.Group>(null);
+    const antennaRef = useRef<THREE.Group>(null);
 
-    // High-frequency physics & aiming state
+    // High-frequency physics & position state
     const velocity = useRef(0);
-    const posX = useRef(-22);
-    const cannonAngle = useRef(0.45); // Elevation angle in radians
-    const facing = useRef<1 | -1>(1); // 1 = facing right, -1 = facing left
-    const recoilTimer = useRef(0);
+    const posX = useRef(0); // positioned in horizontal center
+    const posZ = 10.0;      // foreground combat road
 
-    // Mouse aim world position tracking
-    const mouseAim = useRef({ x: 0, y: 0, active: false });
+    // Base hull heading: facing forward into the battlefield (-Z)
+    const BASE_HULL_YAW = Math.PI;
+
+    // 3D Aiming Angles in World Space
+    const turretYaw = useRef(0.0);
+    const cannonPitch = useRef(0.38);
+    const recoilTimer = useRef(0);
 
     const { camera, raycaster, size } = useThree();
 
+    // ── Execute Fire in 3D ─────────────────────────────────────────
     const executeFire = useCallback(() => {
-      const h = getTerrainHeight(posX.current);
-      const slope = getTerrainAngle(posX.current);
-      const cosS = Math.cos(slope);
-      const sinS = Math.sin(slope);
+      const px = posX.current;
+      const pz = posZ;
+      const py = getTerrainHeight(px, pz);
 
-      recoilTimer.current = 0.25;
+      recoilTimer.current = 0.22;
 
-      // Local muzzle offset
-      const cElev = Math.cos(cannonAngle.current);
-      const sElev = Math.sin(cannonAngle.current);
-      const localMuzzleX = facing.current * (0.6 + cElev * 3.2);
-      const localMuzzleY = 1.02 + sElev * 3.2;
+      const yaw = turretYaw.current;
+      const pitch = cannonPitch.current;
 
-      // Transform local muzzle offset to world space via ground slope
-      const muzzleX = posX.current + (cosS * localMuzzleX - sinS * localMuzzleY);
-      const muzzleY = (h + 0.65) + (sinS * localMuzzleX + cosS * localMuzzleY);
-      const muzzle = new THREE.Vector3(muzzleX, muzzleY, 0);
+      // 100% Exact 3D Launch Direction Vector
+      const dirX = Math.sin(yaw) * Math.cos(pitch);
+      const dirY = Math.sin(pitch);
+      const dirZ = -Math.cos(yaw) * Math.cos(pitch);
 
-      // Transform launch direction vector to world space
-      const localDirX = facing.current * cElev;
-      const localDirY = sElev;
-      const worldDirX = cosS * localDirX - sinS * localDirY;
-      const worldDirY = sinS * localDirX + cosS * localDirY;
+      // Muzzle world position (matches barrel tip)
+      const barrelLen = 3.6;
+      const muzzleX = px + dirX * barrelLen;
+      const muzzleY = py + 1.55 + dirY * barrelLen;
+      const muzzleZ = pz + dirZ * barrelLen;
+      _muzzleWorld.set(muzzleX, muzzleY, muzzleZ);
 
-      const vel = new THREE.Vector3(
-        worldDirX * CFG.projectile.speed + velocity.current,
-        worldDirY * CFG.projectile.speed,
-        0
+      // Initial 3D launch velocity
+      const speed = CFG.projectile.speed;
+      _velWorld.set(
+        dirX * speed,
+        dirY * speed,
+        dirZ * speed
       );
 
       AudioManager.play('fire');
-      onFire?.(muzzle, vel);
+      onFire?.(_muzzleWorld, _velWorld);
 
       if (flashRef.current) {
         flashRef.current.visible = true;
-        flashRef.current.scale.setScalar(1.4 + secureRandom() * 0.4);
+        flashRef.current.scale.setScalar(1.5 + secureRandom() * 0.4);
         setTimeout(() => {
           if (flashRef.current) flashRef.current.visible = false;
         }, 90);
       }
-    }, [onFire]);
+    }, [onFire, posZ]);
 
     // ── Public handle ─────────────────────────────────────────────
     useImperativeHandle(ref, () => ({
-      getPosition: () => new THREE.Vector3(posX.current, getTerrainHeight(posX.current), 0),
-      getCannonAngle: () => cannonAngle.current,
-      getFacing: () => facing.current,
+      getPosition: () => new THREE.Vector3(posX.current, getTerrainHeight(posX.current, posZ), posZ),
       getVelocity: () => velocity.current,
-      triggerRecoil: () => { recoilTimer.current = 0.25; },
-      setCannonAngle: (a: number) => {
-        cannonAngle.current = Math.max(-0.25, Math.min(1.4, a));
-      },
-      setFacing: (f: number) => {
-        facing.current = f >= 0 ? 1 : -1;
-      },
+      triggerRecoil: () => { recoilTimer.current = 0.22; },
       fire: executeFire,
     }));
 
-    // ── Mouse / Touch Aim-to-Cursor Listener (Zero-GC) ────────────
-    useEffect(() => {
-      const onPointerMove = (e: PointerEvent) => {
-        if (paused) return;
-        // Ignore pointer events over the bottom HUD button bar
-        if (e.clientY > window.innerHeight - 75) return;
-        const target = e.target as HTMLElement | null;
-        if (target?.closest?.('.control-bar') || target?.closest?.('button')) return;
+    // ── Hold-to-Aim & Drag-to-Aim Listeners (Only aims while holding) ──
+    const isAimDragging = useRef(false);
 
-        _ndcVec.x = (e.clientX / size.width) * 2 - 1;
-        _ndcVec.y = -(e.clientY / size.height) * 2 + 1;
+    useEffect(() => {
+      const updateAimFromPointer = (clientX: number, clientY: number) => {
+        _ndcVec.x = (clientX / size.width) * 2 - 1;
+        _ndcVec.y = -(clientY / size.height) * 2 + 1;
 
         raycaster.setFromCamera(_ndcVec, camera);
 
-        if (raycaster.ray.intersectPlane(_plane, _planeIntersect)) {
-          mouseAim.current.x = _planeIntersect.x;
-          mouseAim.current.y = _planeIntersect.y;
-          mouseAim.current.active = true;
+        // Intersect ray with target plane at Z = -18 (depth of enemy ridges)
+        _targetPlane.constant = 18.0;
+        if (raycaster.ray.intersectPlane(_targetPlane, _planeIntersect)) {
+          const px = posX.current;
+          const pz = posZ;
+          const py = getTerrainHeight(px, pz) + 1.55;
 
-          const tankX = posX.current;
-          const tankY = getTerrainHeight(tankX) + 1.8;
-          const dx = _planeIntersect.x - tankX;
-          const dy = _planeIntersect.y - tankY;
+          const targetX = _planeIntersect.x;
+          const targetY = Math.max(0.5, Math.min(10.0, _planeIntersect.y));
+          const targetZ = -18.0;
 
-          // Auto-flip tank facing based on cursor position relative to tank
-          if (dx < -1.0) {
-            facing.current = -1; // Face Left
-          } else if (dx > 1.0) {
-            facing.current = 1;  // Face Right
+          const dx = targetX - px;
+          const dz = targetZ - pz;
+          const dy = targetY - py;
+          const distXZ = Math.hypot(dx, dz);
+
+          // Turret Yaw: points left or right across ridges
+          const targetYaw = Math.atan2(dx, -dz);
+          turretYaw.current = Math.max(CFG.cannon.minYaw, Math.min(CFG.cannon.maxYaw, targetYaw));
+
+          // Ballistic Elevation Pitch to hit target exactly
+          const v = CFG.projectile.speed;
+          const g = 9.81;
+          const v2 = v * v;
+          const v4 = v2 * v2;
+          const root = v4 - g * (g * distXZ * distXZ + 2 * dy * v2);
+
+          if (root >= 0) {
+            const theta = Math.atan((v2 - Math.sqrt(root)) / (g * distXZ));
+            cannonPitch.current = Math.max(CFG.cannon.minElevation, Math.min(CFG.cannon.maxElevation, theta));
+          } else {
+            const straightAngle = Math.atan2(dy, distXZ);
+            cannonPitch.current = Math.max(CFG.cannon.minElevation, Math.min(CFG.cannon.maxElevation, straightAngle + 0.1));
           }
-
-          // Calculate elevation angle relative to current facing direction
-          const targetAngle = Math.atan2(dy, Math.abs(dx));
-          cannonAngle.current = Math.max(-0.25, Math.min(1.4, targetAngle));
         }
       };
 
-      window.addEventListener('pointermove', onPointerMove, { passive: true });
-      return () => window.removeEventListener('pointermove', onPointerMove);
-    }, [camera, raycaster, size, paused]);
+      const isIgnoredTarget = (target: HTMLElement | null, clientY: number) => {
+        return Boolean(
+          target?.closest?.('.options-tray') ||
+          target?.closest?.('.control-bar') ||
+          target?.closest?.('.top-utility-bar') ||
+          target?.closest?.('.desktop-fire-container') ||
+          target?.closest?.('.mobile-controls') ||
+          target?.closest?.('button') ||
+          clientY > window.innerHeight - 70
+        );
+      };
 
+      const onPointerDown = (e: PointerEvent) => {
+        if (paused) return;
+        if (isIgnoredTarget(e.target as HTMLElement | null, e.clientY)) return;
+        isAimDragging.current = true;
+        updateAimFromPointer(e.clientX, e.clientY);
+      };
+
+      const onPointerMove = (e: PointerEvent) => {
+        if (paused || !isAimDragging.current) return;
+        updateAimFromPointer(e.clientX, e.clientY);
+      };
+
+      const onPointerUp = () => {
+        isAimDragging.current = false;
+      };
+
+      window.addEventListener('pointerdown', onPointerDown, { passive: true });
+      window.addEventListener('pointermove', onPointerMove, { passive: true });
+      window.addEventListener('pointerup', onPointerUp, { passive: true });
+      window.addEventListener('pointercancel', onPointerUp, { passive: true });
+
+      return () => {
+        window.removeEventListener('pointerdown', onPointerDown);
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+        window.removeEventListener('pointercancel', onPointerUp);
+      };
+    }, [camera, raycaster, size, paused, posZ]);
 
     // ── Main Frame Loop ───────────────────────────────────────────
     useFrame((_, delta) => {
@@ -170,10 +212,8 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
       if (!grp) return;
       const dt = Math.min(delta, 0.05);
 
-      const h = getTerrainHeight(posX.current);
-      const slope = getTerrainAngle(posX.current);
-      const cosS = Math.cos(slope);
-      const sinS = Math.sin(slope);
+      const h = getTerrainHeight(posX.current, posZ);
+      const slope = getTerrainAngle(posX.current, posZ);
 
       // Fire trigger
       if (fireSignal.current) {
@@ -183,59 +223,68 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
 
       if (paused) return;
 
-      // Tank Movement Controls
+      // Tank Movement Controls (A/D or ◀/▶)
       const { left, right } = keys.current;
-      const { acceleration: accel, deceleration: decel, maxSpeed } = CFG.playerTank;
+      const { acceleration: accel, deceleration: decel, maxSpeed, boundaryX } = CFG.playerTank;
 
       if (left) {
         velocity.current = Math.max(-maxSpeed, velocity.current - accel * dt);
-        if (!mouseAim.current.active) facing.current = -1;
       } else if (right) {
         velocity.current = Math.min(maxSpeed, velocity.current + accel * dt);
-        if (!mouseAim.current.active) facing.current = 1;
       } else {
         if (velocity.current > 0) velocity.current = Math.max(0, velocity.current - decel * dt);
         else velocity.current = Math.min(0, velocity.current + decel * dt);
       }
 
-      // Optional keyboard elevation controls (W/S or Up/Down)
+      // Keyboard Turret elevation controls (Up/Down / W/S)
       if (keys.current.up) {
-        cannonAngle.current = Math.min(1.4, cannonAngle.current + 1.4 * dt);
+        cannonPitch.current = Math.min(CFG.cannon.maxElevation, cannonPitch.current + 1.2 * dt);
       } else if (keys.current.down) {
-        cannonAngle.current = Math.max(-0.25, cannonAngle.current - 1.4 * dt);
+        cannonPitch.current = Math.max(CFG.cannon.minElevation, cannonPitch.current - 1.2 * dt);
       }
 
-      posX.current = Math.max(-75, Math.min(75, posX.current + velocity.current * dt));
+      posX.current = Math.max(-boundaryX, Math.min(boundaryX, posX.current + velocity.current * dt));
 
-      // Terrain Snapping & Ground Tangent Orientation
       const bob = Math.sin(Date.now() * 0.01) * 0.03 * (Math.abs(velocity.current) / maxSpeed);
-      const accelPitch = (velocity.current / maxSpeed) * 0.05 * facing.current;
 
-      // The root group aligns directly with the terrain slope
-      grp.position.set(posX.current, h + 0.65 + bob, 0);
-      grp.rotation.z = slope - accelPitch;
+      // Tank root sits on terrain aligned with World space
+      grp.position.set(posX.current, h + 0.68 + bob, posZ);
 
-      // The chassis only flips its X scale — zero extra Z rotation to avoid double-inversion!
+      // Chassis faces forward (-Z) and tilts with terrain slope
       if (chassisRef.current) {
-        chassisRef.current.scale.x = facing.current;
-        chassisRef.current.rotation.z = 0;
+        chassisRef.current.rotation.set(0, BASE_HULL_YAW, -slope * 0.8);
       }
 
-      // Rotate road wheels
-      if (wheelsRef.current) {
-        wheelsRef.current.children.forEach((wheel) => {
-          wheel.rotation.z -= velocity.current * dt * 2.2 * facing.current;
+      // Rotate roadwheels on their own local axles
+      if (leftWheelsRef.current && rightWheelsRef.current) {
+        leftWheelsRef.current.children.forEach((w) => {
+          w.rotation.x += velocity.current * dt * 2.5;
+        });
+        rightWheelsRef.current.children.forEach((w) => {
+          w.rotation.x += velocity.current * dt * 2.5;
         });
       }
 
-      // Cannon Angle Elevation & Recoil Animation
+      // Turret rotates directly in World Y axis (aiming towards -Z)
+      if (turretRef.current) {
+        turretRef.current.rotation.y = -turretYaw.current;
+      }
+
+      // Commander subtle look/breathing animation
+      if (commanderRef.current) {
+        const breathing = Math.sin(Date.now() * 0.004) * 0.03;
+        commanderRef.current.position.y = 1.06 + breathing;
+        commanderRef.current.rotation.y = Math.sin(Date.now() * 0.002) * 0.08;
+      }
+
+      // Cannon elevates directly in local X axis (tilts -Z barrel up towards +Y)
       if (cannonRef.current) {
-        cannonRef.current.rotation.z = cannonAngle.current;
+        cannonRef.current.rotation.x = cannonPitch.current;
         if (recoilTimer.current > 0) {
           recoilTimer.current -= dt;
-          cannonRef.current.position.x = 0.5 - (recoilTimer.current / 0.25) * 0.35;
+          cannonRef.current.position.z = 0.35 * (recoilTimer.current / 0.22);
         } else {
-          cannonRef.current.position.x = 0.5;
+          cannonRef.current.position.z = 0;
         }
       }
 
@@ -248,16 +297,22 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
         }
       }
 
-      // Trajectory preview
-      if (showTrajectory && trajectoryGroupRef.current) {
+      // Antenna spring wiggle
+      if (antennaRef.current) {
+        const targetWiggle = (velocity.current / maxSpeed) * 0.35 + Math.sin(Date.now() * 0.01) * 0.08;
+        antennaRef.current.rotation.z = THREE.MathUtils.lerp(antennaRef.current.rotation.z, targetWiggle, dt * 10);
+      }
 
-        updateTrajectoryDots(
+      // Trajectory preview in 3D (100% matches barrel, projectile, and stops at enemy tank!)
+      if (showTrajectory && trajectoryGroupRef.current) {
+        const enemies = enemyPositionsRef?.current ?? [];
+        update3DTrajectoryDots(
           trajectoryGroupRef.current,
           posX.current,
-          h,
-          slope,
-          cannonAngle.current,
-          facing.current
+          posZ,
+          turretYaw.current,
+          cannonPitch.current,
+          enemies
         );
         trajectoryGroupRef.current.visible = true;
       } else if (trajectoryGroupRef.current) {
@@ -265,179 +320,265 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
       }
     });
 
-    const antennaRef = useRef<THREE.Group>(null);
-
-    // Dynamic antenna spring physics in frame loop
-    useFrame((_, delta) => {
-      if (antennaRef.current) {
-        const dt = Math.min(delta, 0.05);
-        const targetWiggle = -(velocity.current / CFG.playerTank.maxSpeed) * 0.45 + Math.sin(Date.now() * 0.01) * 0.08;
-        antennaRef.current.rotation.z = THREE.MathUtils.lerp(antennaRef.current.rotation.z, targetWiggle, dt * 10);
-      }
-    });
-
-    const HULL_GREEN = '#2e7d32';
-    const HULL_LIGHT = '#43a047';
-    const TREAD_COLOR = '#212121';
-    const WHEEL_RIM = '#78909c';
-    const WHEEL_HUB = '#cfd8dc';
-    const CANNON_STEEL = '#37474f';
+    const HULL_GREEN = '#3b4b28'; // WWII Sherman olive-drab
+    const HULL_HIGHLIGHT = '#4a5d33';
+    const TREAD_COLOR = '#1a1f18';
+    const CANNON_STEEL = '#263238';
     const EMBLEM_GOLD = '#ffd54f';
-    const wheelXs = [-1.4, -0.7, 0, 0.7, 1.4];
+    const wheelZs = [-1.4, -0.7, 0, 0.7, 1.4];
 
     return (
       <group ref={groupRef}>
-        {/* Chassis flipped Left/Right cleanly */}
+        {/* ── CHASSIS & TANK BODY ── */}
         <group ref={chassisRef}>
-          {/* ── LOWER CHASSIS & TREADS ── */}
-          <mesh position={[0, -0.32, 1.05]} castShadow>
-            <boxGeometry args={[3.6, 0.45, 0.35]} />
+          {/* Lower Chassis & Treads */}
+          <mesh position={[1.22, -0.32, 0]} castShadow>
+            <boxGeometry args={[0.38, 0.48, 3.8]} />
             <meshLambertMaterial color={TREAD_COLOR} />
           </mesh>
-          <mesh position={[0, -0.32, -1.05]} castShadow>
-            <boxGeometry args={[3.6, 0.45, 0.35]} />
+          <mesh position={[-1.22, -0.32, 0]} castShadow>
+            <boxGeometry args={[0.38, 0.48, 3.8]} />
             <meshLambertMaterial color={TREAD_COLOR} />
           </mesh>
 
-          {/* 5 Big Roadwheels */}
-          <TankRoadwheels
-            ref={wheelsRef}
-            wheelXs={wheelXs}
-            zOffset={1.1}
-            radius={0.34}
-            width={0.28}
-            hubRadius={0.24}
-            hubColor={WHEEL_RIM}
-          />
-
-          {/* ── ARMORED HULL ── */}
-          <mesh position={[0, 0.12, 0]} castShadow>
-            <boxGeometry args={[3.2, 0.65, 2.0]} />
-            <meshLambertMaterial color={HULL_GREEN} />
-          </mesh>
-          <mesh position={[0.2, 0.45, 0]} castShadow>
-            <boxGeometry args={[2.4, 0.42, 1.8]} />
-            <meshLambertMaterial color={HULL_LIGHT} />
-          </mesh>
-          <mesh position={[1.4, 0.25, 0]} rotation={[0, 0, -0.55]} castShadow>
-            <boxGeometry args={[0.85, 0.6, 1.95]} />
-            <meshLambertMaterial color={HULL_GREEN} />
-          </mesh>
-          <mesh position={[-1.35, 0.35, 0]} castShadow>
-            <boxGeometry args={[0.7, 0.45, 1.9]} />
-            <meshLambertMaterial color={HULL_GREEN} />
-          </mesh>
-
-          {/* Dual Front Headlights */}
-          <mesh position={[1.65, 0.28, 0.72]}>
-            <cylinderGeometry args={[0.12, 0.15, 0.2, 12]} />
-            <meshLambertMaterial color="#37474f" />
-          </mesh>
-          <mesh position={[1.74, 0.28, 0.72]}>
-            <sphereGeometry args={[0.11, 10, 10]} />
-            <meshBasicMaterial color="#fff59d" />
-          </mesh>
-          {/* Headlight Volumetric Beam */}
-          <mesh position={[2.8, 0.2, 0.72]} rotation={[0, 0, -Math.PI / 2]}>
-            <coneGeometry args={[0.8, 2.2, 12]} />
-            <meshBasicMaterial color="#fff9c4" transparent opacity={0.18} side={THREE.DoubleSide} />
-          </mesh>
-
-          {/* Dual Rear Exhaust Pipes */}
-          <mesh position={[-1.75, 0.4, 0.55]} rotation={[0, 0, Math.PI / 2]} castShadow>
-            <cylinderGeometry args={[0.08, 0.1, 0.4, 8]} />
-            <meshLambertMaterial color="#212121" />
-          </mesh>
-          <group ref={exhaustRef} position={[-2.0, 0.5, 0.55]} visible={false}>
-            <mesh position={[0, 0, 0]}>
-              <sphereGeometry args={[0.22, 8, 8]} />
-              <meshBasicMaterial color="#ffffff" transparent opacity={0.65} />
-            </mesh>
-            <mesh position={[-0.35, 0.2, 0]}>
-              <sphereGeometry args={[0.32, 8, 8]} />
-              <meshBasicMaterial color="#e0e0e0" transparent opacity={0.45} />
-            </mesh>
+          {/* 5 Roadwheels on Right Track */}
+          <group ref={rightWheelsRef}>
+            {wheelZs.map((wz, i) => (
+              <group key={`r-wheel-${i}`} position={[1.25, -0.32, wz]}>
+                <mesh rotation={[0, 0, Math.PI / 2]} castShadow>
+                  <cylinderGeometry args={[0.36, 0.36, 0.3, 14]} />
+                  <meshLambertMaterial color="#37474f" />
+                </mesh>
+                <mesh position={[0.16, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+                  <cylinderGeometry args={[0.24, 0.24, 0.05, 12]} />
+                  <meshLambertMaterial color="#78909c" />
+                </mesh>
+              </group>
+            ))}
           </group>
 
-          {/* Golden Crown Emblem */}
-          <mesh position={[0.1, 0.45, 0.92]}>
-            <boxGeometry args={[0.6, 0.28, 0.04]} />
+          {/* 5 Roadwheels on Left Track */}
+          <group ref={leftWheelsRef}>
+            {wheelZs.map((wz, i) => (
+              <group key={`l-wheel-${i}`} position={[-1.25, -0.32, wz]}>
+                <mesh rotation={[0, 0, Math.PI / 2]} castShadow>
+                  <cylinderGeometry args={[0.36, 0.36, 0.3, 14]} />
+                  <meshLambertMaterial color="#37474f" />
+                </mesh>
+                <mesh position={[-0.16, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+                  <cylinderGeometry args={[0.24, 0.24, 0.05, 12]} />
+                  <meshLambertMaterial color="#78909c" />
+                </mesh>
+              </group>
+            ))}
+          </group>
+
+          {/* Armored Hull */}
+          <mesh position={[0, 0.14, 0]} castShadow>
+            <boxGeometry args={[2.1, 0.68, 3.4]} />
+            <meshLambertMaterial color={HULL_GREEN} />
+          </mesh>
+          <mesh position={[0, 0.48, 0.2]} castShadow>
+            <boxGeometry args={[1.9, 0.45, 2.6]} />
+            <meshLambertMaterial color={HULL_HIGHLIGHT} />
+          </mesh>
+          <mesh position={[0, 0.28, 1.5]} rotation={[0.55, 0, 0]} castShadow>
+            <boxGeometry args={[2.05, 0.62, 0.9]} />
+            <meshLambertMaterial color={HULL_GREEN} />
+          </mesh>
+          <mesh position={[0, 0.38, -1.45]} castShadow>
+            <boxGeometry args={[2.0, 0.48, 0.75]} />
+            <meshLambertMaterial color={HULL_GREEN} />
+          </mesh>
+
+          {/* Front Dual Headlights */}
+          <mesh position={[0.78, 0.3, 1.75]}>
+            <sphereGeometry args={[0.13, 10, 10]} />
+            <meshBasicMaterial color="#fff59d" />
+          </mesh>
+          <mesh position={[-0.78, 0.3, 1.75]}>
+            <sphereGeometry args={[0.13, 10, 10]} />
+            <meshBasicMaterial color="#fff59d" />
+          </mesh>
+
+          {/* Star Insignia on Side Armor */}
+          <mesh position={[1.08, 0.45, 0.2]} rotation={[0, Math.PI / 2, 0]}>
+            <boxGeometry args={[0.6, 0.3, 0.04]} />
+            <meshLambertMaterial color={EMBLEM_GOLD} />
+          </mesh>
+          <mesh position={[-1.08, 0.45, 0.2]} rotation={[0, -Math.PI / 2, 0]}>
+            <boxGeometry args={[0.6, 0.3, 0.04]} />
             <meshLambertMaterial color={EMBLEM_GOLD} />
           </mesh>
 
-          {/* ── ROUNDED TURRET & COMMANDER ── */}
-          <group ref={turretRef} position={[0.1, 0.82, 0]}>
-            <mesh position={[0, 0.05, 0]} castShadow>
-              <cylinderGeometry args={[1.05, 1.15, 0.35, 18]} />
+          {/* Rear Exhaust Pipes */}
+          <mesh position={[0.6, 0.42, -1.85]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+            <cylinderGeometry args={[0.09, 0.11, 0.45, 8]} />
+            <meshLambertMaterial color="#212121" />
+          </mesh>
+          <group ref={exhaustRef} position={[0.6, 0.52, -2.1]} visible={false}>
+            <mesh>
+              <sphereGeometry args={[0.24, 8, 8]} />
+              <meshBasicMaterial color="#ffffff" transparent opacity={0.65} />
+            </mesh>
+          </group>
+        </group>
+
+        {/* ── 3D ROUNDED TURRET ── */}
+        <group ref={turretRef} position={[0, 0.88, 0]}>
+          <mesh position={[0, 0.05, 0]} castShadow>
+            <cylinderGeometry args={[1.1, 1.2, 0.38, 18]} />
+            <meshLambertMaterial color={HULL_GREEN} />
+          </mesh>
+          <mesh position={[0, 0.24, 0]} castShadow>
+            <sphereGeometry args={[0.95, 18, 14, 0, Math.PI * 2, 0, Math.PI / 2]} />
+            <meshLambertMaterial color={HULL_HIGHLIGHT} />
+          </mesh>
+
+          {/* Radio Antenna */}
+          <group ref={antennaRef} position={[-0.45, 0.48, 0.5]}>
+            <mesh position={[0, 0.85, 0]}>
+              <cylinderGeometry args={[0.02, 0.04, 1.7, 6]} />
+              <meshLambertMaterial color="#212121" />
+            </mesh>
+            <mesh position={[0, 1.75, 0]}>
+              <sphereGeometry args={[0.09, 8, 8]} />
+              <meshBasicMaterial color="#ffd54f" />
+            </mesh>
+          </group>
+
+          {/* ── HEROIC TANK COMMANDER MAN (Standing Prominently on Turret Roof) ── */}
+          <group ref={commanderRef} position={[0, 1.06, 0.1]} scale={[1.15, 1.15, 1.15]}>
+            {/* Open Cupola Hatch Ring on Roof */}
+            <mesh position={[0, -0.06, 0]} castShadow>
+              <cylinderGeometry args={[0.46, 0.5, 0.18, 16]} />
               <meshLambertMaterial color={HULL_GREEN} />
             </mesh>
-            <mesh position={[0.05, 0.28, 0]} castShadow>
-              <sphereGeometry args={[0.92, 18, 14, 0, Math.PI * 2, 0, Math.PI / 2]} />
-              <meshLambertMaterial color={HULL_LIGHT} />
+            <mesh position={[0, 0.01, 0]}>
+              <cylinderGeometry args={[0.38, 0.38, 0.04, 16]} />
+              <meshLambertMaterial color="#1a2016" />
             </mesh>
 
-            {/* Wobbly Radio Antenna */}
-            <group ref={antennaRef} position={[-0.6, 0.45, -0.4]}>
-              <mesh position={[0, 0.8, 0]}>
-                <cylinderGeometry args={[0.02, 0.04, 1.6, 6]} />
-                <meshLambertMaterial color="#212121" />
+            {/* Commander Torso in Combat Uniform */}
+            <mesh position={[0, 0.28, 0]} castShadow>
+              <boxGeometry args={[0.52, 0.52, 0.34]} />
+              <meshLambertMaterial color="#3d4c28" />
+            </mesh>
+            {/* Shoulder Epaulets / Straps */}
+            <mesh position={[-0.24, 0.52, 0]}>
+              <boxGeometry args={[0.1, 0.05, 0.2]} />
+              <meshLambertMaterial color="#2f3b1f" />
+            </mesh>
+            <mesh position={[0.24, 0.52, 0]}>
+              <boxGeometry args={[0.1, 0.05, 0.2]} />
+              <meshLambertMaterial color="#2f3b1f" />
+            </mesh>
+            {/* Chest Webbing & Tactical Leather Harness */}
+            <mesh position={[0, 0.3, 0.12]}>
+              <boxGeometry args={[0.32, 0.32, 0.14]} />
+              <meshLambertMaterial color="#3e2723" />
+            </mesh>
+
+            {/* Commander Head / Neck */}
+            <mesh position={[0, 0.68, 0]} castShadow>
+              <sphereGeometry args={[0.22, 14, 14]} />
+              <meshLambertMaterial color="#d7ccc8" />
+            </mesh>
+
+            {/* WWII Leather Tanker Helmet with Top Dome & Earflaps */}
+            <mesh position={[0, 0.76, 0]} castShadow>
+              <sphereGeometry args={[0.26, 16, 14, 0, Math.PI * 2, 0, Math.PI / 1.6]} />
+              <meshLambertMaterial color="#3e2723" />
+            </mesh>
+            {/* Helmet Rim & Goggles Strap */}
+            <mesh position={[0, 0.74, 0]}>
+              <torusGeometry args={[0.25, 0.035, 8, 16]} />
+              <meshLambertMaterial color="#1a1a1a" />
+            </mesh>
+            {/* Radio Headset Earcups */}
+            <mesh position={[0.24, 0.68, 0]}>
+              <cylinderGeometry args={[0.08, 0.08, 0.07, 10]} />
+              <meshLambertMaterial color="#212121" />
+            </mesh>
+            <mesh position={[-0.24, 0.68, 0]}>
+              <cylinderGeometry args={[0.08, 0.08, 0.07, 10]} />
+              <meshLambertMaterial color="#212121" />
+            </mesh>
+
+            {/* Aviator Goggles on Front of Helmet */}
+            <mesh position={[0, 0.72, -0.22]}>
+              <boxGeometry args={[0.28, 0.09, 0.09]} />
+              <meshLambertMaterial color="#1a237e" />
+            </mesh>
+
+            {/* Arms Gripping Hatch Rim / Binoculars */}
+            <group position={[-0.32, 0.22, -0.1]} rotation={[0.4, 0.3, 0.2]}>
+              <mesh position={[0, 0, 0]}>
+                <cylinderGeometry args={[0.09, 0.1, 0.36, 8]} />
+                <meshLambertMaterial color="#3d4c28" />
               </mesh>
-              <mesh position={[0, 1.65, 0]}>
+              <mesh position={[0, -0.18, 0]}>
                 <sphereGeometry args={[0.09, 8, 8]} />
-                <meshBasicMaterial color="#ffd54f" />
+                <meshLambertMaterial color="#3e2723" />
+              </mesh>
+            </group>
+            <group position={[0.32, 0.22, -0.1]} rotation={[0.4, -0.3, -0.2]}>
+              <mesh position={[0, 0, 0]}>
+                <cylinderGeometry args={[0.09, 0.1, 0.36, 8]} />
+                <meshLambertMaterial color="#3d4c28" />
+              </mesh>
+              <mesh position={[0, -0.18, 0]}>
+                <sphereGeometry args={[0.09, 8, 8]} />
+                <meshLambertMaterial color="#3e2723" />
               </mesh>
             </group>
 
-            {/* Commander */}
-            <group position={[-0.2, 0.48, 0]}>
-              <mesh position={[0, 0.1, 0]}>
-                <cylinderGeometry args={[0.38, 0.42, 0.2, 14]} />
-                <meshLambertMaterial color={HULL_GREEN} />
-              </mesh>
-              <mesh position={[0, 0.38, 0]}>
-                <sphereGeometry args={[0.3, 14, 14]} />
-                <meshLambertMaterial color="#33691e" />
-              </mesh>
-              <mesh position={[0.22, 0.32, 0]}>
-                <sphereGeometry args={[0.12, 10, 10]} />
-                <meshLambertMaterial color="#ffab91" />
-              </mesh>
-              <mesh position={[0.15, 0.42, 0]} rotation={[0, 0, 0.2]}>
-                <boxGeometry args={[0.25, 0.12, 0.38]} />
-                <meshLambertMaterial color="#1a1a1a" />
-              </mesh>
-            </group>
-
-            {/* ── ELEVATING HEAVY CANNON ── */}
-            <group ref={cannonRef} position={[0.5, 0.2, 0]}>
-              <mesh position={[0, 0, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-                <cylinderGeometry args={[0.32, 0.32, 0.65, 16]} />
-                <meshLambertMaterial color={HULL_GREEN} />
-              </mesh>
-              <mesh position={[1.1, 0, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
-                <cylinderGeometry args={[0.13, 0.17, 2.2, 14]} />
-                <meshLambertMaterial color={CANNON_STEEL} />
-              </mesh>
-              <mesh position={[0.45, 0, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
-                <cylinderGeometry args={[0.19, 0.21, 0.8, 14]} />
-                <meshLambertMaterial color={CANNON_STEEL} />
-              </mesh>
-              <mesh position={[2.25, 0, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
-                <cylinderGeometry args={[0.22, 0.22, 0.4, 14]} />
+            {/* Tactical Military Binoculars Held in Front */}
+            <group position={[0, 0.36, -0.32]}>
+              <mesh position={[-0.07, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                <cylinderGeometry args={[0.05, 0.06, 0.2, 8]} />
                 <meshLambertMaterial color="#212121" />
               </mesh>
+              <mesh position={[0.07, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                <cylinderGeometry args={[0.05, 0.06, 0.2, 8]} />
+                <meshLambertMaterial color="#212121" />
+              </mesh>
+              <mesh position={[0, 0, 0]}>
+                <boxGeometry args={[0.18, 0.05, 0.08]} />
+                <meshLambertMaterial color="#37474f" />
+              </mesh>
+            </group>
+          </group>
 
-              {/* Starburst Muzzle Flash */}
-              <group ref={flashRef} position={[2.6, 0, 0]} visible={false}>
-                <mesh>
-                  <sphereGeometry args={[0.65, 10, 10]} />
-                  <meshBasicMaterial color="#fff59d" />
-                </mesh>
-                <mesh>
-                  <dodecahedronGeometry args={[0.95, 0]} />
-                  <meshBasicMaterial color="#ff9800" transparent opacity={0.7} />
-                </mesh>
-              </group>
+          {/* ── ELEVATING HEAVY CANNON (Points along -Z into battlefield) ── */}
+          <group ref={cannonRef} position={[0, 0.24, 0]}>
+            <mesh position={[0, 0, -0.45]} rotation={[0, 0, Math.PI / 2]} castShadow>
+              <cylinderGeometry args={[0.34, 0.34, 0.7, 16]} />
+              <meshLambertMaterial color={HULL_GREEN} />
+            </mesh>
+            <mesh position={[0, 0, -2.0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+              <cylinderGeometry args={[0.13, 0.17, 3.2, 14]} />
+              <meshLambertMaterial color={CANNON_STEEL} />
+            </mesh>
+            <mesh position={[0, 0, -1.0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+              <cylinderGeometry args={[0.2, 0.22, 1.0, 14]} />
+              <meshLambertMaterial color={CANNON_STEEL} />
+            </mesh>
+            <mesh position={[0, 0, -3.6]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+              <cylinderGeometry args={[0.24, 0.24, 0.5, 14]} />
+              <meshLambertMaterial color="#212121" />
+            </mesh>
+
+            {/* Muzzle Flash */}
+            <group ref={flashRef} position={[0, 0, -3.9]} visible={false}>
+              <mesh>
+                <sphereGeometry args={[0.7, 10, 10]} />
+                <meshBasicMaterial color="#fff59d" />
+              </mesh>
+              <mesh>
+                <dodecahedronGeometry args={[1.05, 0]} />
+                <meshBasicMaterial color="#ff9800" transparent opacity={0.7} />
+              </mesh>
             </group>
           </group>
         </group>
@@ -446,76 +587,93 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
   }
 );
 
-
 PlayerTank.displayName = 'PlayerTank';
 
 // ─────────────────────────────────────────────────────────────────
-//  Full 360° Dynamic Trajectory Arc & Ground Target Reticle
+//  3D Ballistic Trajectory Arc with Precise Tank & Terrain Collision
 // ─────────────────────────────────────────────────────────────────
-function updateTrajectoryDots(
+function update3DTrajectoryDots(
   group: THREE.Group,
   px: number,
-  py: number,
-  slopeAngle: number,
-  cAngle: number,
-  facing: number
+  pz: number,
+  yaw: number,
+  pitch: number,
+  enemyPositions: THREE.Vector3[]
 ) {
-  const cosS = Math.cos(slopeAngle);
-  const sinS = Math.sin(slopeAngle);
+  const py = getTerrainHeight(px, pz);
 
-  const cElev = Math.cos(cAngle);
-  const sElev = Math.sin(cAngle);
+  const dirX = Math.sin(yaw) * Math.cos(pitch);
+  const dirY = Math.sin(pitch);
+  const dirZ = -Math.cos(yaw) * Math.cos(pitch);
 
-  // Local muzzle position
-  const localMuzzleX = facing * (0.6 + cElev * 3.2);
-  const localMuzzleY = 1.02 + sElev * 3.2;
+  const barrelLen = 3.6;
+  const origin: [number, number, number] = [
+    px + dirX * barrelLen,
+    py + 1.55 + dirY * barrelLen,
+    pz + dirZ * barrelLen,
+  ];
 
-  // Transform to world space
-  const originX = px + (cosS * localMuzzleX - sinS * localMuzzleY);
-  const originY = (py + 0.65) + (sinS * localMuzzleX + cosS * localMuzzleY);
-  const origin: [number, number, number] = [originX, originY, 0];
-
-  // World launch direction
-  const localDirX = facing * cElev;
-  const localDirY = sElev;
-  const worldDirX = cosS * localDirX - sinS * localDirY;
-  const worldDirY = sinS * localDirX + cosS * localDirY;
-
+  const speed = CFG.projectile.speed;
   const vel: [number, number, number] = [
-    worldDirX * CFG.projectile.speed,
-    worldDirY * CFG.projectile.speed,
-    0,
+    dirX * speed,
+    dirY * speed,
+    dirZ * speed,
   ];
 
   const count = group.children.length;
-  const pts = ballisticPositions(origin, vel, 9.81, count, 0.16);
+  const pts = ballisticPositions(origin, vel, 9.81, count, CFG.trajectory.timeStep);
 
-  let hasHitGround = false;
+  let hasTerminated = false;
 
-  pts.forEach((pt, i) => {
+  for (let i = 0; i < count; i++) {
     const child = group.children[i] as THREE.Mesh | undefined;
-    if (!child) return;
+    if (!child) continue;
 
-    if (hasHitGround) {
+    if (hasTerminated) {
       child.visible = false;
-      return;
+      continue;
     }
 
-    const groundY = getTerrainHeight(pt[0]);
-    if (pt[1] <= groundY + 0.3) {
-      // Landing marker at exact ground contact point
-      hasHitGround = true;
-      child.position.set(pt[0], groundY + 0.4, 0);
+    const pt = pts[i];
+
+    // 1. Check if trajectory intersects any enemy tank bounding sphere (exact 1.45 physical radius)
+    let hitEnemy = false;
+    for (let e = 0; e < enemyPositions.length; e++) {
+      const ep = enemyPositions[e];
+      const dist = Math.hypot(pt[0] - ep.x, pt[1] - (ep.y + 0.8), pt[2] - ep.z);
+      if (dist < 1.45) {
+        hitEnemy = true;
+        break;
+      }
+    }
+
+    if (hitEnemy) {
+      hasTerminated = true;
+      child.position.set(pt[0], pt[1], pt[2]);
+      child.scale.set(2.6, 2.6, 2.6);
+      (child.material as THREE.MeshBasicMaterial).color.set('#ffd700'); // Radiant Gold Target Lock!
+      (child.material as THREE.MeshBasicMaterial).opacity = 1.0;
+      child.visible = true;
+      continue;
+    }
+
+    // 2. Check if trajectory intersects ground terrain
+    const groundY = getTerrainHeight(pt[0], pt[2]);
+    if (pt[1] <= groundY + 0.35) {
+      hasTerminated = true;
+      child.position.set(pt[0], groundY + 0.35, pt[2]);
       child.scale.set(2.2, 2.2, 2.2);
       (child.material as THREE.MeshBasicMaterial).color.set('#ff1744');
       (child.material as THREE.MeshBasicMaterial).opacity = 0.95;
       child.visible = true;
-    } else {
-      child.position.set(pt[0], pt[1], pt[2]);
-      child.scale.setScalar(1.0 - i * 0.04);
-      (child.material as THREE.MeshBasicMaterial).color.set('#ffea00');
-      (child.material as THREE.MeshBasicMaterial).opacity = Math.max(0.2, 0.9 - i * 0.06);
-      child.visible = true;
+      continue;
     }
-  });
+
+    // 3. Normal airborne trajectory dot
+    child.position.set(pt[0], pt[1], pt[2]);
+    child.scale.setScalar(Math.max(0.4, 1.05 - i * 0.038));
+    (child.material as THREE.MeshBasicMaterial).color.set('#69f0ae');
+    (child.material as THREE.MeshBasicMaterial).opacity = Math.max(0.35, 0.95 - i * 0.04);
+    child.visible = true;
+  }
 }

@@ -8,8 +8,8 @@ export function secureRandom(): number {
     typeof window !== 'undefined'
       ? window.crypto
       : typeof globalThis !== 'undefined'
-      ? globalThis.crypto
-      : null;
+        ? globalThis.crypto
+        : null;
 
   if (cryptoObj && typeof cryptoObj.getRandomValues === 'function') {
     const arr = new Uint32Array(1);
@@ -63,6 +63,25 @@ export function ballisticPositions(
   return pts;
 }
 
+/** Shortest distance from a 3D point P to line segment AB (Continuous Collision Detection in 3D) */
+export function distToSegment3D(
+  px: number, py: number, pz: number,
+  ax: number, ay: number, az: number,
+  bx: number, by: number, bz: number
+): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const dz = bz - az;
+  const l2 = dx * dx + dy * dy + dz * dz;
+  if (l2 === 0) return Math.hypot(px - ax, py - ay, pz - az);
+  let t = ((px - ax) * dx + (py - ay) * dy + (pz - az) * dz) / l2;
+  t = Math.max(0, Math.min(1, t));
+  const projX = ax + t * dx;
+  const projY = ay + t * dy;
+  const projZ = az + t * dz;
+  return Math.hypot(px - projX, py - projY, pz - projZ);
+}
+
 /** Shortest distance from a 2D point P to line segment AB (Continuous Collision Detection) */
 export function distToSegment2D(
   px: number, py: number,
@@ -80,16 +99,6 @@ export function distToSegment2D(
   return Math.hypot(px - projX, py - projY);
 }
 
-/** Fisher-Yates shuffle with secure random */
-export function shuffle<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(secureRandom() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
 /** Random float between min and max using secureRandom */
 export function randFloat(min: number, max: number): number {
   return min + secureRandom() * (max - min);
@@ -99,3 +108,4 @@ export function randFloat(min: number, max: number): number {
 export function randInt(min: number, max: number): number {
   return Math.floor(randFloat(min, max + 1));
 }
+

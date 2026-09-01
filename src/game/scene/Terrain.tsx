@@ -1,71 +1,166 @@
-import { useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import * as THREE from 'three';
 import { GAME_CONFIG } from '../gameConfig';
-import { useFrame } from '@react-three/fiber';
 
-const { width, depth, widthSegments, depthSegments, maxHeight } = GAME_CONFIG.terrain;
+const { width, depth, widthSegments, depthSegments } = GAME_CONFIG.terrain;
 
 // ─────────────────────────────────────────────────────────────────
-//  Smooth Rolling Hills Height Function (Clean, Playable Slopes)
+//  3D Heightmap — Smooth Open Valley with 4 Distinct Symmetrical Ridges
 // ─────────────────────────────────────────────────────────────────
-export function getTerrainHeight(x: number): number {
-  return (
-    Math.sin(x * 0.055) * maxHeight * 0.65 +
-    Math.sin(x * 0.11 + 1.4) * maxHeight * 0.35 +
-    Math.sin(x * 0.028 + 2.8) * maxHeight * 0.75 +
-    Math.cos(x * 0.085 + 0.5) * maxHeight * 0.25
-  );
+export function getTerrainHeight(x: number, z: number = 10.0): number {
+  // 1. Foreground Player Road (z in [7, 14]) — Smooth horizontal ridge at y ≈ 0.5
+  if (z >= 7.0) {
+    const roadUndulation = Math.sin(x * 0.06) * 0.2;
+    return 0.5 + roadUndulation;
+  }
+
+  // 2. Open Central Valley (z in [0, 7]) — Gentle concave dip (y ≈ -0.25 to 0.5)
+  if (z >= 0) {
+    const t = z / 7.0;
+    const valleyDip = -0.32 * Math.sin(t * Math.PI);
+    return t * 0.5 + valleyDip;
+  }
+
+  // 3. The 4 Distinct Front Ridges (z < 0) — Clean Gaussian Peaks
+  // Ridge A (Option A - Far Left): Peak at (-18, -16)
+  const dASq = Math.pow(x - (-18), 2) + Math.pow(z - (-16), 2);
+  const hA = 4.8 * Math.exp(-dASq / 50);
+
+  // Ridge B (Option B - Mid-Left Peak): Peak at (-6, -21)
+  const dBSq = Math.pow(x - (-6), 2) + Math.pow(z - (-21), 2);
+  const hB = 5.8 * Math.exp(-dBSq / 55);
+
+  // Ridge C (Option C - Mid-Right Peak): Peak at (+6, -21)
+  const dCSq = Math.pow(x - 6, 2) + Math.pow(z - (-21), 2);
+  const hC = 5.8 * Math.exp(-dCSq / 55);
+
+  // Ridge D (Option D - Far Right): Peak at (+18, -16)
+  const dDSq = Math.pow(x - 18, 2) + Math.pow(z - (-16), 2);
+  const hD = 4.8 * Math.exp(-dDSq / 50);
+
+  // Natural subtle rolling waves across the battlefield
+  const waves = Math.sin(x * 0.05 + z * 0.04) * 0.35 + Math.cos(x * 0.03 - z * 0.05) * 0.25;
+
+  // Distant Layered Alpine Mountain Range (z < -24) — Natural Jagged Peaks
+  let backgroundMountains = 0;
+  if (z < -24) {
+    const dist = Math.abs(z) - 24;
+    backgroundMountains =
+      Math.min(16, Math.pow(dist / 5.0, 1.5) * 2.8) +
+      Math.sin(x * 0.18) * 2.6 * Math.cos(x * 0.09) +
+      Math.sin(x * 0.42 + dist * 0.1) * 1.5 +
+      Math.cos(x * 0.08 + dist * 0.22) * 2.0;
+  }
+
+  return hA + hB + hC + hD + waves + backgroundMountains;
 }
 
-/** Returns the terrain slope angle (radians) at a given x */
-export function getTerrainAngle(x: number): number {
-  const dx = 0.15;
-  const h1 = getTerrainHeight(x - dx);
-  const h2 = getTerrainHeight(x + dx);
-  return Math.atan2(h2 - h1, 2 * dx);
+const _vNormal = new THREE.Vector3();
+
+export function getTerrainNormal(x: number, z: number, target: THREE.Vector3 = _vNormal): THREE.Vector3 {
+  const delta = 0.25;
+  const hL = getTerrainHeight(x - delta, z);
+  const hR = getTerrainHeight(x + delta, z);
+  const hD = getTerrainHeight(x, z - delta);
+  const hU = getTerrainHeight(x, z + delta);
+
+  const dx = (hR - hL) / (2 * delta);
+  const dz = (hU - hD) / (2 * delta);
+
+  target.set(-dx, 1, -dz).normalize();
+  return target;
+}
+
+export function getTerrainAngle(x: number, z: number = 10.0): number {
+  const delta = 0.2;
+  const h1 = getTerrainHeight(x - delta, z);
+  const h2 = getTerrainHeight(x + delta, z);
+  return Math.atan2(h2 - h1, 2 * delta);
 }
 
 // ─────────────────────────────────────────────────────────────────
-//  Stylized Hills of Steel Terrain
+//  3D Realistic Battlefield Terrain (AAA Stylized Realism)
 // ─────────────────────────────────────────────────────────────────
 export function Terrain() {
-  // 1. Foreground Solid Hill Track (2.5D Extruded Ground)
   const groundGeometry = useMemo(() => {
-    // Width X, Depth Z
     const geo = new THREE.PlaneGeometry(width, depth, widthSegments, depthSegments);
     geo.rotateX(-Math.PI / 2);
+
+    const zOffset = -18;
+    geo.translate(0, 0, zOffset);
 
     const pos = geo.attributes.position as THREE.BufferAttribute;
     const colors: number[] = [];
 
-    // Palette: Lush Grass Green on Top, Earthy Brown on Front/Side slopes
-    const cGrassLight = new THREE.Color('#7cb342'); // Bright sunny lime-green
-    const cGrassDark = new THREE.Color('#43a047'); // Rich emerald green
-    const cDirtTop = new THREE.Color('#8d6e63'); // Warm dirt path
-    const cDirtDeep = new THREE.Color('#4e342e'); // Deep underground soil
+    // ── AAA Realistic Battlefield Palette ──
+    const cGrassSun     = new THREE.Color('#7a8d56'); // Sunlit golden-green grass
+    const cGrassMuted   = new THREE.Color('#5e7045'); // Natural meadow steppe
+    const cGrassDeep    = new THREE.Color('#465433'); // Valley shade green
+    const cDirtRoad     = new THREE.Color('#675747'); // Compacted dirt road
+    const cDirtRuts     = new THREE.Color('#4e3f32'); // Wheel track grooves
+    const cRockOutcrop  = new THREE.Color('#5f6d77'); // Slate cliff rock
+    const cRockPeak     = new THREE.Color('#7a8891'); // Hilltop limestone gravel
+    const cMountainRock = new THREE.Color('#384652'); // Distant alpine slate rock
+    const cMountainSnow = new THREE.Color('#dde7f0'); // Crisp mountain snow crags
+
+    const norm = new THREE.Vector3();
 
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const z = pos.getZ(i);
-      const topY = getTerrainHeight(x);
+      const h = getTerrainHeight(x, z);
+      pos.setY(i, h);
 
-      // Add gentle bevel towards front/back edges
-      const zFactor = Math.abs(z) / (depth / 2);
-      const yDrop = Math.pow(zFactor, 2.5) * 4.5;
-      const finalY = topY - yDrop;
-      pos.setY(i, finalY);
+      getTerrainNormal(x, z, norm);
+      const slope = 1.0 - norm.y; // 0 = flat, > 0.2 = steep
 
-      // Color based on Z depth & slope
       const col = new THREE.Color();
-      if (zFactor < 0.35) {
-        // Center drive strip: Grass & Dirt blend
-        col.lerpColors(cGrassLight, cGrassDark, (Math.sin(x * 0.5) + 1) * 0.5);
-      } else if (zFactor < 0.65) {
-        // Transition to dirt path
-        col.lerpColors(cGrassDark, cDirtTop, (zFactor - 0.35) / 0.3);
+
+      if (z >= 7.0 && z <= 13.0) {
+        // Foreground Dirt Combat Road
+        const distFromRoadCenter = Math.abs(z - 10.0);
+        if (distFromRoadCenter < 1.6) {
+          const isWheelRut = Math.abs(distFromRoadCenter - 0.75) < 0.35;
+          col.copy(isWheelRut ? cDirtRuts : cDirtRoad);
+        } else {
+          const t = Math.min(1, (distFromRoadCenter - 1.6) / 1.4);
+          col.lerpColors(cDirtRoad, cGrassMuted, t);
+        }
+      } else if (z < -25) {
+        // Distant Majestic Alpine Mountains with Natural Jagged Snow Crags
+        const dist = Math.abs(z) - 25;
+        col.lerpColors(cGrassDeep, cMountainRock, Math.min(1, dist / 10));
+        if (h > 8.5) {
+          const snowFactor = Math.min(1, (h - 8.5) / 3.2);
+          col.lerp(cMountainSnow, snowFactor * 0.9);
+        }
       } else {
-        // Deep earth side wall
-        col.lerpColors(cDirtTop, cDirtDeep, (zFactor - 0.65) / 0.35);
+        // Main Battlefield (Valley & 4 Front Ridges)
+        if (slope > 0.24) {
+          // Steep cliff faces -> exposed granite rock
+          const cliffFactor = Math.min(1, (slope - 0.24) / 0.22);
+          col.lerpColors(cGrassMuted, cRockOutcrop, cliffFactor);
+        } else if (h > 4.2) {
+          // Ridge Peaks -> Sunlit grass + limestone rock
+          const ridgeFactor = Math.min(1, (h - 4.2) / 2.2);
+          col.lerpColors(cGrassSun, cRockPeak, ridgeFactor);
+        } else if (h > 1.8) {
+          // Mid-slope rolling meadow
+          const t = (h - 1.8) / 2.4;
+          col.lerpColors(cGrassMuted, cGrassSun, t);
+        } else {
+          // Low valley basin
+          const t = Math.max(0, (h + 0.3) / 2.1);
+          col.lerpColors(cGrassDeep, cGrassMuted, t);
+        }
+
+        // Subtle natural dirt paths winding towards the 4 ridges
+        const pathA = Math.exp(-Math.pow(x - (-18 + (z + 16) * 0.35), 2) / 3.0);
+        const pathD = Math.exp(-Math.pow(x - (18 - (z + 16) * 0.35), 2) / 3.0);
+        if ((pathA > 0.35 || pathD > 0.35) && z > -18 && z < 7) {
+          const pathAlpha = Math.max(pathA, pathD) * 0.55;
+          col.lerp(cDirtRoad, pathAlpha);
+        }
       }
 
       colors.push(col.r, col.g, col.b);
@@ -76,320 +171,139 @@ export function Terrain() {
     return geo;
   }, []);
 
-  // 2. Solid Front Skirt (Closes the bottom so no void is visible)
-  const skirtGeometry = useMemo(() => {
-    const segments = widthSegments;
-    const geo = new THREE.BufferGeometry();
-    const positions: number[] = [];
-    const colors: number[] = [];
-    const cDirtDeep = new THREE.Color('#3e2723');
-    const cDirtMid = new THREE.Color('#5d4037');
-
-    const halfW = width / 2;
-    const dx = width / segments;
-    const zFront = depth / 2;
-    const bottomY = -30;
-
-    for (let i = 0; i < segments; i++) {
-      const x1 = -halfW + i * dx;
-      const x2 = -halfW + (i + 1) * dx;
-      const y1 = getTerrainHeight(x1) - 4.5;
-      const y2 = getTerrainHeight(x2) - 4.5;
-
-      // Triangle 1
-      positions.push(x1, y1, zFront, x1, bottomY, zFront, x2, y1, zFront);
-      // Triangle 2
-      positions.push(x2, y1, zFront, x1, bottomY, zFront, x2, bottomY, zFront);
-
-      for (let k = 0; k < 6; k++) {
-        colors.push(cDirtMid.r, cDirtMid.g, cDirtMid.b);
-      }
-    }
-
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    geo.computeVertexNormals();
-    return geo;
-  }, []);
-
   return (
     <group>
-      {/* Main Ground Mesh */}
       <mesh geometry={groundGeometry} receiveShadow castShadow>
         <meshLambertMaterial vertexColors side={THREE.FrontSide} />
       </mesh>
-
-      {/* Solid Under-Cliff Skirt */}
-      <mesh geometry={skirtGeometry}>
-        <meshLambertMaterial vertexColors />
-      </mesh>
-
-      {/* Layered Cartoon Background Mountains */}
-      <ParallaxHills />
-
-      {/* Stylized Vegetation & Props */}
-      <DecorativeProps />
+      <BattlefieldProps />
     </group>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────
-//  Layered Background Cartoon Hills (Parallax Silhouettes)
+//  Realistic Props (Positioned on outer flanks & background)
 // ─────────────────────────────────────────────────────────────────
-function ParallaxHills() {
-  const layers = [
-    { z: -14, freq: 0.038, amp: 7, offsetY: 2, color: '#558b2f', opacity: 0.95 },
-    { z: -25, freq: 0.024, amp: 11, offsetY: 6, color: '#33691e', opacity: 0.85 },
-    { z: -40, freq: 0.015, amp: 16, offsetY: 12, color: '#1b5e20', opacity: 0.70 },
-  ];
+function BattlefieldProps() {
+  const treePositions = useMemo(() => [
+    // Far left flank (outside Ridge A)
+    [-28, -8], [-26, -18], [-32, -14], [-30, -24],
+    // Far right flank (outside Ridge D)
+    [28, -8], [26, -18], [32, -14], [30, -24],
+    // Distant background ridge tops (behind the enemy tanks)
+    [-14, -28], [0, -30], [14, -28],
+    // Foreground road edges (far flanks)
+    [-24, 8], [-28, 11], [24, 8], [28, 11],
+  ], []);
 
-  return (
-    <>
-      {layers.map((layer, li) => (
-        <ParallaxLayer key={li} {...layer} />
-      ))}
-    </>
-  );
-}
+  const rockPositions = useMemo(() => [
+    [-24, -14], [-12, -18], [12, -18], [24, -14],
+    [-14, -8], [14, -8],
+  ], []);
 
-interface ParallaxLayerProps {
-  z: number;
-  freq: number;
-  amp: number;
-  offsetY: number;
-  color: string;
-  opacity: number;
-}
-
-function ParallaxLayer({ z, freq, amp, offsetY, color, opacity }: ParallaxLayerProps) {
-  const geo = useMemo(() => {
-    const w = width * 1.8;
-    const segs = 100;
-    const g = new THREE.BufferGeometry();
-    const positions: number[] = [];
-    const halfW = w / 2;
-    const dx = w / segs;
-    const bottomY = -35;
-
-    for (let i = 0; i < segs; i++) {
-      const x1 = -halfW + i * dx;
-      const x2 = -halfW + (i + 1) * dx;
-      const y1 = Math.sin(x1 * freq + z * 0.1) * amp + Math.sin(x1 * freq * 2.2) * (amp * 0.3) + offsetY;
-      const y2 = Math.sin(x2 * freq + z * 0.1) * amp + Math.sin(x2 * freq * 2.2) * (amp * 0.3) + offsetY;
-
-      // Triangle 1 & 2
-      positions.push(x1, y1, 0, x1, bottomY, 0, x2, y1, 0);
-      positions.push(x2, y1, 0, x1, bottomY, 0, x2, bottomY, 0);
-    }
-
-    g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    g.computeVertexNormals();
-    return g;
-  }, [amp, freq, offsetY, z]);
-
-  return (
-    <mesh geometry={geo} position={[0, 0, z]}>
-      <meshLambertMaterial color={color} transparent opacity={opacity} side={THREE.FrontSide} />
-    </mesh>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────
-//  Decorative Props (Windmill, Watchtower, Trees, Rocks)
-// ─────────────────────────────────────────────────────────────────
-const TREE_COORDS = [
-  -65, -52, -42, -32, -22, -12, -2, 10, 22, 34, 46, 58, 68,
-];
-
-function DecorativeProps() {
   return (
     <group>
-      {/* Cartoon Spinning Windmill on background ridge */}
-      <CartoonWindmill position={[-36, getTerrainHeight(-36) + 0.5, -14]} scale={1.2} />
-
-      {/* Military Watchtower on right ridge */}
-      <CartoonWatchtower position={[44, getTerrainHeight(44) + 0.5, -12]} scale={1.1} />
-
-      {/* Trees positioned in the deep background (Z = -7 to -12) */}
-      {TREE_COORDS.map((x, i) => {
-        const y = getTerrainHeight(x);
-        const zBack = -7 - (i % 3) * 2.5;
-        const scale = 0.8 + (i % 4) * 0.25;
+      {treePositions.map(([x, z], i) => {
+        const y = getTerrainHeight(x, z);
         const isPine = i % 2 === 0;
-
+        const scale = 0.75 + (i % 3) * 0.2;
         return isPine ? (
-          <CartoonPineTree key={i} position={[x, y + 0.2, zBack]} scale={scale} />
+          <RealisticPineTree key={`tree-${i}`} position={[x, y, z]} scale={scale} />
         ) : (
-          <CartoonOakTree key={i} position={[x, y + 0.2, zBack]} scale={scale} />
+          <RealisticOakTree key={`tree-${i}`} position={[x, y, z]} scale={scale} />
         );
       })}
 
-      {/* Decorative Stylized Rocks on the Hillside (Z = -2.5) */}
-      {[-55, -38, -18, 5, 28, 48, 62].map((x, i) => {
-        const y = getTerrainHeight(x);
+      {rockPositions.map(([x, z], i) => {
+        const y = getTerrainHeight(x, z);
         return (
           <mesh
             key={`rock-${i}`}
-            position={[x, y + 0.25, -2.5]}
+            position={[x, y + 0.25, z]}
             rotation={[0.2, i * 0.7, 0.3]}
             castShadow
           >
-            <dodecahedronGeometry args={[0.55 + (i % 3) * 0.2, 0]} />
-            <meshLambertMaterial color="#78909c" />
+            <dodecahedronGeometry args={[0.65 + (i % 3) * 0.2, 0]} />
+            <meshLambertMaterial color="#5f6d77" />
           </mesh>
         );
+      })}
+
+      {/* Weathered Wooden Split-Rail Fence along Road Edges */}
+      {[-24, -18, 18, 24].map((x, i) => {
+        const z = 8.0;
+        const y = getTerrainHeight(x, z);
+        return <WoodenFence key={`fence-${i}`} position={[x, y, z]} />;
       })}
     </group>
   );
 }
 
-
-// ─────────────────────────────────────────────────────────────────
-//  Cartoon Spinning Windmill
-// ─────────────────────────────────────────────────────────────────
-function CartoonWindmill({ position, scale = 1 }: { position: [number, number, number]; scale?: number }) {
-  const sailsRef = useRef<THREE.Group>(null);
-
-  useFrame((_, delta) => {
-    if (sailsRef.current) {
-      sailsRef.current.rotation.z += delta * 0.9;
-    }
-  });
-
+function WoodenFence({ position }: { position: [number, number, number] }) {
   return (
-    <group position={position} scale={scale}>
-      {/* Mill Base */}
-      <mesh position={[0, 2.0, 0]} castShadow>
-        <cylinderGeometry args={[1.2, 1.8, 4.0, 10]} />
-        <meshLambertMaterial color="#efebe9" />
+    <group position={position}>
+      <mesh position={[-1.1, 0.4, 0]} castShadow>
+        <cylinderGeometry args={[0.06, 0.08, 0.8, 6]} />
+        <meshLambertMaterial color="#42352d" />
       </mesh>
-      {/* Conical Roof */}
-      <mesh position={[0, 4.6, 0]} castShadow>
-        <coneGeometry args={[1.4, 1.4, 10]} />
-        <meshLambertMaterial color="#d32f2f" />
+      <mesh position={[1.1, 0.4, 0]} castShadow>
+        <cylinderGeometry args={[0.06, 0.08, 0.8, 6]} />
+        <meshLambertMaterial color="#42352d" />
       </mesh>
-      {/* Axle Hub */}
-      <mesh position={[0, 3.8, 1.25]} rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[0.25, 0.25, 0.5, 10]} />
-        <meshLambertMaterial color="#5d4037" />
+      <mesh position={[0, 0.58, 0]} castShadow>
+        <boxGeometry args={[2.3, 0.08, 0.05]} />
+        <meshLambertMaterial color="#524339" />
       </mesh>
-
-      {/* 4 Rotating Sails */}
-      <group ref={sailsRef} position={[0, 3.8, 1.5]}>
-        {Array.from({ length: 4 }).map((_, i) => (
-          <group key={i} rotation={[0, 0, (i * Math.PI) / 2]}>
-            {/* Wooden spar */}
-            <mesh position={[0, 1.8, 0]}>
-              <boxGeometry args={[0.12, 3.6, 0.08]} />
-              <meshLambertMaterial color="#5d4037" />
-            </mesh>
-            {/* Cloth Sail */}
-            <mesh position={[0.32, 2.1, 0.02]}>
-              <boxGeometry args={[0.55, 2.4, 0.04]} />
-              <meshLambertMaterial color="#ffffff" />
-            </mesh>
-          </group>
-        ))}
-      </group>
-    </group>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────
-//  Cartoon Watchtower Outpost
-// ─────────────────────────────────────────────────────────────────
-function CartoonWatchtower({ position, scale = 1 }: { position: [number, number, number]; scale?: number }) {
-  return (
-    <group position={position} scale={scale}>
-      {/* 4 Legs */}
-      {[
-        [-0.8, -0.8],
-        [0.8, -0.8],
-        [-0.8, 0.8],
-        [0.8, 0.8],
-      ].map(([lx, lz], i) => (
-        <mesh key={i} position={[lx, 2.0, lz]} rotation={[0.08 * (lx > 0 ? -1 : 1), 0, 0.08 * (lz > 0 ? -1 : 1)]} castShadow>
-          <cylinderGeometry args={[0.1, 0.14, 4.0, 6]} />
-          <meshLambertMaterial color="#5d4037" />
-        </mesh>
-      ))}
-      {/* Cross Braces */}
-      <mesh position={[0, 2.0, 0]}>
-        <boxGeometry args={[1.5, 0.1, 1.5]} />
-        <meshLambertMaterial color="#4e342e" />
-      </mesh>
-      {/* Cabin Platform */}
-      <mesh position={[0, 4.0, 0]} castShadow>
-        <boxGeometry args={[2.2, 0.25, 2.2]} />
-        <meshLambertMaterial color="#3e2723" />
-      </mesh>
-      {/* Cabin Roof */}
-      <mesh position={[0, 5.2, 0]} castShadow>
-        <coneGeometry args={[1.8, 1.2, 4]} />
-        <meshLambertMaterial color="#1b5e20" />
-      </mesh>
-      {/* Beacon Light on Top */}
-      <mesh position={[0, 6.0, 0]}>
-        <sphereGeometry args={[0.2, 8, 8]} />
-        <meshBasicMaterial color="#ffd54f" />
+      <mesh position={[0, 0.28, 0]} castShadow>
+        <boxGeometry args={[2.3, 0.08, 0.05]} />
+        <meshLambertMaterial color="#524339" />
       </mesh>
     </group>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────
-//  Cartoon Pine Tree Model
-// ─────────────────────────────────────────────────────────────────
-function CartoonPineTree({ position, scale = 1 }: { position: [number, number, number]; scale?: number }) {
+function RealisticPineTree({ position, scale = 1 }: { position: [number, number, number]; scale?: number }) {
   return (
     <group position={position} scale={scale}>
-      {/* Trunk */}
+      <mesh position={[0, 0.8, 0]} castShadow>
+        <cylinderGeometry args={[0.16, 0.24, 1.6, 6]} />
+        <meshLambertMaterial color="#382a22" />
+      </mesh>
+      <mesh position={[0, 1.9, 0]} castShadow>
+        <coneGeometry args={[1.3, 1.8, 7]} />
+        <meshLambertMaterial color="#233522" />
+      </mesh>
+      <mesh position={[0, 2.9, 0]} castShadow>
+        <coneGeometry args={[1.0, 1.6, 7]} />
+        <meshLambertMaterial color="#2c3e29" />
+      </mesh>
+      <mesh position={[0, 3.8, 0]} castShadow>
+        <coneGeometry args={[0.7, 1.3, 7]} />
+        <meshLambertMaterial color="#354a32" />
+      </mesh>
+    </group>
+  );
+}
+
+function RealisticOakTree({ position, scale = 1 }: { position: [number, number, number]; scale?: number }) {
+  return (
+    <group position={position} scale={scale}>
       <mesh position={[0, 1.0, 0]} castShadow>
-        <cylinderGeometry args={[0.2, 0.3, 2.0, 8]} />
-        <meshLambertMaterial color="#5d4037" />
+        <cylinderGeometry args={[0.2, 0.28, 2.0, 6]} />
+        <meshLambertMaterial color="#382a22" />
       </mesh>
-      {/* Foliage Layers */}
-      <mesh position={[0, 2.2, 0]} castShadow>
-        <coneGeometry args={[1.5, 2.0, 8]} />
-        <meshLambertMaterial color="#2e7d32" />
+      <mesh position={[0, 2.8, 0]} castShadow>
+        <sphereGeometry args={[1.4, 8, 8]} />
+        <meshLambertMaterial color="#445435" />
       </mesh>
-      <mesh position={[0, 3.2, 0]} castShadow>
-        <coneGeometry args={[1.2, 1.8, 8]} />
-        <meshLambertMaterial color="#388e3c" />
+      <mesh position={[-0.5, 2.4, 0.3]} castShadow>
+        <sphereGeometry args={[0.9, 7, 7]} />
+        <meshLambertMaterial color="#4f603c" />
       </mesh>
-      <mesh position={[0, 4.1, 0]} castShadow>
-        <coneGeometry args={[0.8, 1.4, 8]} />
-        <meshLambertMaterial color="#43a047" />
-      </mesh>
-    </group>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────
-//  Cartoon Round Oak Tree Model
-// ─────────────────────────────────────────────────────────────────
-function CartoonOakTree({ position, scale = 1 }: { position: [number, number, number]; scale?: number }) {
-  return (
-    <group position={position} scale={scale}>
-      {/* Trunk */}
-      <mesh position={[0, 1.2, 0]} castShadow>
-        <cylinderGeometry args={[0.25, 0.35, 2.4, 8]} />
-        <meshLambertMaterial color="#4e342e" />
-      </mesh>
-      {/* Puffy Foliage Spheres */}
-      <mesh position={[0, 3.2, 0]} castShadow>
-        <sphereGeometry args={[1.6, 12, 12]} />
-        <meshLambertMaterial color="#66bb6a" />
-      </mesh>
-      <mesh position={[-0.7, 2.7, 0.4]} castShadow>
-        <sphereGeometry args={[1.1, 10, 10]} />
-        <meshLambertMaterial color="#4caf50" />
-      </mesh>
-      <mesh position={[0.7, 2.8, -0.3]} castShadow>
-        <sphereGeometry args={[1.2, 10, 10]} />
-        <meshLambertMaterial color="#81c784" />
+      <mesh position={[0.5, 2.5, -0.2]} castShadow>
+        <sphereGeometry args={[0.95, 7, 7]} />
+        <meshLambertMaterial color="#586944" />
       </mesh>
     </group>
   );
 }
-

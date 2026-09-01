@@ -3,22 +3,21 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { GAME_CONFIG } from '../gameConfig';
 import { getTerrainHeight } from '../scene/Terrain';
-import { distToSegment2D } from '../../utils/math';
+import { distToSegment3D } from '../../utils/math';
 import type { EnemyTankHandle } from './EnemyTank';
 
 interface ProjectileProps {
-  origin:         THREE.Vector3;
-  velocity:       THREE.Vector3;
-  sessionId:      number;
-  enemyHandles:   React.MutableRefObject<(EnemyTankHandle | null)[]>;
+  origin: THREE.Vector3;
+  velocity: THREE.Vector3;
+  sessionId: number;
+  enemyHandles: React.MutableRefObject<(EnemyTankHandle | null)[]>;
   enemyTargetIds: string[];
-  onHitTank:      (tankId: string) => void;
-  onHitTerrain:   (impactPos: THREE.Vector3) => void;
-  onDestroy:      () => void;
+  onHitTank: (tankId: string) => void;
+  onHitTerrain: (impactPos: THREE.Vector3) => void;
+  onDestroy: () => void;
 }
 
-// Generous arcade hit radius (tank chassis + turret)
-const TANK_HIT_RADIUS = 2.8;
+const TANK_HIT_RADIUS = 1.45;
 
 export function Projectile({
   origin,
@@ -30,24 +29,23 @@ export function Projectile({
   onHitTerrain,
   onDestroy,
 }: ProjectileProps) {
-  const meshRef   = useRef<THREE.Group>(null);
-  const pos       = useRef(origin.clone());
-  const prevPos   = useRef(origin.clone());
-  const vel       = useRef(velocity.clone());
-  const resolved  = useRef(false);
-  const age       = useRef(0);
+  const meshRef = useRef<THREE.Group>(null);
+  const pos = useRef(origin.clone());
+  const prevPos = useRef(origin.clone());
+  const vel = useRef(velocity.clone());
+  const resolved = useRef(false);
+  const age = useRef(0);
   const mySession = useRef(sessionId);
 
-  // Trail Particles
-  const TRAIL_LEN = 28;
-  const trailPos  = useRef<Float32Array>(new Float32Array(TRAIL_LEN * 3).fill(9999));
-  const trailIdx  = useRef(0);
-  const trailRef  = useRef<THREE.Points>(null);
+  // Trail Particles in 3D
+  const TRAIL_LEN = 36;
+  const trailPos = useRef<Float32Array>(new Float32Array(TRAIL_LEN * 3).fill(9999));
+  const trailIdx = useRef(0);
+  const trailRef = useRef<THREE.Points>(null);
 
   useEffect(() => {
     return () => { resolved.current = true; };
   }, []);
-
 
   useFrame((_, delta) => {
     if (resolved.current) return;
@@ -59,10 +57,10 @@ export function Projectile({
     const dt = Math.min(delta, 0.035);
     age.current += dt;
 
-    // Save previous position for Continuous Collision Detection (CCD)
+    // Save previous position for Continuous Collision Detection (CCD) in 3D
     prevPos.current.copy(pos.current);
 
-    // Ballistic Physics
+    // 3D Ballistic Physics
     vel.current.y -= 9.81 * dt;
     pos.current.x += vel.current.x * dt;
     pos.current.y += vel.current.y * dt;
@@ -70,14 +68,14 @@ export function Projectile({
 
     if (meshRef.current) {
       meshRef.current.position.copy(pos.current);
-      // Orient bullet shell along flight trajectory
-      const heading = Math.atan2(vel.current.y, vel.current.x);
-      meshRef.current.rotation.z = heading;
+      // Orient bullet shell along flight trajectory in 3D
+      const dir = vel.current.clone().normalize();
+      meshRef.current.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
     }
 
-    // Update sparkling particle trail
+    // Update sparkling particle trail in 3D
     const ti = (trailIdx.current % TRAIL_LEN) * 3;
-    trailPos.current[ti]     = pos.current.x;
+    trailPos.current[ti] = pos.current.x;
     trailPos.current[ti + 1] = pos.current.y;
     trailPos.current[ti + 2] = pos.current.z;
     trailIdx.current++;
@@ -85,17 +83,17 @@ export function Projectile({
       (trailRef.current.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
     }
 
-    // ── 1. CONTINUOUS COLLISION DETECTION AGAINST ENEMY TANKS ──
+    // ── 1. CONTINUOUS COLLISION DETECTION AGAINST ENEMY TANKS IN 3D ──
     for (let i = 0; i < enemyHandles.current.length; i++) {
       const handle = enemyHandles.current[i];
       if (!handle) continue;
       const tankPos = handle.getPosition();
 
-      // Compute shortest distance from tank center to the projectile's swept path
-      const sweptDist = distToSegment2D(
-        tankPos.x, tankPos.y + 0.8, // aim at mid-body of enemy tank
-        prevPos.current.x, prevPos.current.y,
-        pos.current.x, pos.current.y
+      // Compute shortest distance from tank center to the projectile's 3D swept path
+      const sweptDist = distToSegment3D(
+        tankPos.x, tankPos.y + 0.9, tankPos.z,
+        prevPos.current.x, prevPos.current.y, prevPos.current.z,
+        pos.current.x, pos.current.y, pos.current.z
       );
 
       if (sweptDist < TANK_HIT_RADIUS && !resolved.current) {
@@ -109,9 +107,9 @@ export function Projectile({
       }
     }
 
-    // ── 2. TERRAIN COLLISION ──────────────────────────────────
-    const terrainY = getTerrainHeight(pos.current.x);
-    if (pos.current.y <= terrainY + 0.4) {
+    // ── 2. 3D TERRAIN COLLISION ───────────────────────────────
+    const terrainY = getTerrainHeight(pos.current.x, pos.current.z);
+    if (pos.current.y <= terrainY + 0.35) {
       if (!resolved.current) {
         resolved.current = true;
         onHitTerrain(pos.current.clone());
@@ -136,12 +134,12 @@ export function Projectile({
       {/* 3D Glowing Heavy Artillery Shell */}
       <group ref={meshRef} position={origin.toArray()}>
         {/* Bullet Body */}
-        <mesh rotation={[0, 0, Math.PI / 2]}>
+        <mesh position={[0, 0, 0]}>
           <cylinderGeometry args={[0.22, 0.22, 0.7, 14]} />
           <meshLambertMaterial color="#ffd54f" emissive="#ff8f00" emissiveIntensity={0.6} />
         </mesh>
         {/* Bullet Nose Cone */}
-        <mesh position={[0.45, 0, 0]} rotation={[0, 0, -Math.PI / 2]}>
+        <mesh position={[0, 0, 0.45]}>
           <coneGeometry args={[0.22, 0.4, 14]} />
           <meshLambertMaterial color="#ff3d00" emissive="#d50000" emissiveIntensity={0.7} />
         </mesh>
@@ -162,7 +160,7 @@ export function Projectile({
             itemSize={3}
           />
         </bufferGeometry>
-        <pointsMaterial color="#ffea00" size={0.36} transparent opacity={0.8} sizeAttenuation />
+        <pointsMaterial color="#ffea00" size={0.38} transparent opacity={0.85} sizeAttenuation />
       </points>
     </group>
   );

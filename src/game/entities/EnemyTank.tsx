@@ -2,122 +2,126 @@ import { useRef, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { TankTarget, TankLifecycle } from '../gameTypes';
-import { GAME_CONFIG } from '../gameConfig';
-import { getTerrainHeight, getTerrainAngle } from '../scene/Terrain';
-import { randFloat, randInt, secureRandom } from '../../utils/math';
+import { getTerrainHeight } from '../scene/Terrain';
+import { secureRandom } from '../../utils/math';
 import { useGameStore } from '../gameStore';
-import { TankRoadwheels } from './TankRoadwheels';
 
 export interface EnemyTankHandle {
   triggerHit: () => void;
   getPosition: () => THREE.Vector3;
+  getTargetId: () => string;
+  getOptionIndex: () => number;
 }
 
 interface EnemyTankProps {
   target: TankTarget;
-  initialX: number;
+  initialPos: [number, number]; // [x, z]
   paused: boolean;
+  playerPosRef?: React.MutableRefObject<THREE.Vector3>;
   onLifecycleChange?: (id: string, lifecycle: TankLifecycle) => void;
 }
 
-/** Distinct Cartoon Team Palettes */
-const ENEMY_PALETTES = [
-  { primary: '#d32f2f', light: '#ef5350', name: 'Crimson' },
-  { primary: '#1976d2', light: '#42a5f5', name: 'Cobalt' },
-  { primary: '#f57c00', light: '#ff9800', name: 'Amber' },
-  { primary: '#7b1fa2', light: '#ab47bc', name: 'Amethyst' },
+// ── Distinct Vibrant Camouflage Color Palettes for Each Enemy Tank ──
+export const ENEMY_PALETTES = [
+  // Tank A: Crimson Iron Camo (Red)
+  {
+    body: '#5c2424',
+    highlight: '#7a3232',
+    turretTop: '#8a3838',
+    barrel: '#3d1616',
+    tread: '#1a1414',
+    accent: '#ef5350',
+    name: 'A',
+  },
+  // Tank B: Steel Cobalt Camo (Blue)
+  {
+    body: '#1b3a57',
+    highlight: '#264e75',
+    turretTop: '#326190',
+    barrel: '#142a3f',
+    tread: '#121820',
+    accent: '#42a5f5',
+    name: 'B',
+  },
+  // Tank C: Desert Amber Sand Camo (Gold/Orange)
+  {
+    body: '#5e4518',
+    highlight: '#7a591e',
+    turretTop: '#8f6824',
+    barrel: '#3d2c0e',
+    tread: '#1c1710',
+    accent: '#ffa726',
+    name: 'C',
+  },
+  // Tank D: Amethyst Night Camo (Purple)
+  {
+    body: '#431e4d',
+    highlight: '#572863',
+    turretTop: '#693178',
+    barrel: '#2d1334',
+    tread: '#18121c',
+    accent: '#ab47bc',
+    name: 'D',
+  },
 ];
 
 const OPTION_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
 
-// ── In-Memory Canvas Texture Cache for Crisp 3D Answer Badges ─────
-const badgeTextureCache = new Map<string, THREE.CanvasTexture>();
+// ── Sleek Dark Pill Badge Texture (matching Concept Reference Image) ─────
+const letterBadgeCache = new Map<string, THREE.CanvasTexture>();
 
-function getAnswerBadgeTexture(letter: string, text: string, primaryColor: string, lightColor: string): THREE.CanvasTexture {
-  const key = `${letter}_${text}_${primaryColor}_${lightColor}`;
-  if (badgeTextureCache.has(key)) {
-    return badgeTextureCache.get(key)!;
-  }
+function getLetterBadgeTexture(letter: string, accentColor: string): THREE.CanvasTexture {
+  const key = `${letter}_${accentColor}`;
+  if (letterBadgeCache.has(key)) return letterBadgeCache.get(key)!;
 
   const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 128;
+  canvas.width = 256;
+  canvas.height = 140;
   const ctx = canvas.getContext('2d');
 
   if (ctx) {
-    // 1. Draw rounded pill container
-    const x = 12;
-    const y = 14;
-    const w = 488;
-    const h = 100;
-    const r = 48;
+    const cx = 128;
+    const cy = 60;
+    const w = 150;
+    const h = 76;
+    const r = 24;
 
+    // 1. Shadow
     ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
-    ctx.shadowBlur = 18;
-    ctx.shadowOffsetY = 8;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+    ctx.shadowBlur = 16;
+    ctx.shadowOffsetY = 6;
 
-    // Dark glass gradient fill
-    const grad = ctx.createLinearGradient(x, y, x, y + h);
-    grad.addColorStop(0, 'rgba(30, 41, 59, 0.96)');
-    grad.addColorStop(1, 'rgba(15, 23, 42, 0.98)');
-    ctx.fillStyle = grad;
-
+    // 2. Rounded Dark Capsule Background
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
     ctx.beginPath();
-    ctx.roundRect(x, y, w, h, r);
+    ctx.roundRect(cx - w / 2, cy - h / 2, w, h, r);
     ctx.fill();
 
-    // Glowing colored border
-    ctx.strokeStyle = lightColor;
-    ctx.lineWidth = 6;
+    // 3. Accent Border
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 5;
     ctx.stroke();
     ctx.restore();
 
-    // 2. Letter Disc on the left
-    const discX = 64;
-    const discY = 64;
-    const discR = 34;
-
+    // 4. Downward indicator pointer
     ctx.save();
+    ctx.fillStyle = accentColor;
     ctx.beginPath();
-    ctx.arc(discX, discY, discR, 0, Math.PI * 2);
-    ctx.fillStyle = primaryColor;
+    ctx.moveTo(cx - 14, cy + h / 2 - 2);
+    ctx.lineTo(cx + 14, cy + h / 2 - 2);
+    ctx.lineTo(cx, cy + h / 2 + 24);
+    ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 4;
-    ctx.stroke();
+    ctx.restore();
 
-    // Letter text
+    // 5. Large, bold letter text (A, B, C, D)
+    ctx.save();
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 36px "Orbitron", sans-serif, system-ui';
+    ctx.font = '900 48px "Orbitron", system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(letter, discX, discY + 2);
-    ctx.restore();
-
-    // 3. Option Text on the right
-    ctx.save();
-    ctx.fillStyle = '#ffffff';
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetY = 3;
-
-    // Auto-fit font size based on text length
-    let fontSize = 34;
-    if (text.length > 22) fontSize = 24;
-    else if (text.length > 16) fontSize = 28;
-
-    ctx.font = `bold ${fontSize}px "Rajdhani", sans-serif, system-ui`;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-
-    // Truncate text if too long for safety
-    let displayText = text;
-    if (displayText.length > 30) {
-      displayText = displayText.slice(0, 27) + '...';
-    }
-
-    ctx.fillText(displayText, 120, 64, 360);
+    ctx.fillText(letter, cx, cy + 2);
     ctx.restore();
   }
 
@@ -125,46 +129,41 @@ function getAnswerBadgeTexture(letter: string, text: string, primaryColor: strin
   texture.generateMipmaps = true;
   texture.minFilter = THREE.LinearMipmapLinearFilter;
   texture.magFilter = THREE.LinearFilter;
-  badgeTextureCache.set(key, texture);
+  letterBadgeCache.set(key, texture);
   return texture;
 }
 
 export const EnemyTank = forwardRef<EnemyTankHandle, EnemyTankProps>(
-  ({ target, initialX, paused, onLifecycleChange }, ref) => {
+  ({ target, initialPos, paused, playerPosRef, onLifecycleChange }, ref) => {
     const { phase } = useGameStore();
 
     const groupRef = useRef<THREE.Group>(null);
+    const chassisRef = useRef<THREE.Group>(null);
     const turretRef = useRef<THREE.Group>(null);
-    const wheelsRef = useRef<THREE.Group>(null);
+    const cannonRef = useRef<THREE.Group>(null);
+    const commanderRef = useRef<THREE.Group>(null);
     const badgeRef = useRef<THREE.Sprite>(null);
 
-    // AI state
-    const posX = useRef(initialX);
-    const speed = useRef(randFloat(GAME_CONFIG.enemyTank.minSpeed, GAME_CONFIG.enemyTank.maxSpeed));
-    const direction = useRef(secureRandom() < 0.5 ? 1 : -1);
+    // Enemy tanks are STATIONARY at their tactical ridge coordinates
+    const posX = initialPos[0];
+    const posZ = initialPos[1];
+    const posY = getTerrainHeight(posX, posZ);
+
     const lifecycle = useRef<TankLifecycle>('active');
-    const nextTurn = useRef(
-      Date.now() +
-        randInt(
-          GAME_CONFIG.enemyTank.changeDirectionInterval[0],
-          GAME_CONFIG.enemyTank.changeDirectionInterval[1]
-        )
-    );
     const explodeTimer = useRef(0);
 
     const palette = ENEMY_PALETTES[target.optionIndex % ENEMY_PALETTES.length];
     const letter = OPTION_LETTERS[target.optionIndex % OPTION_LETTERS.length];
 
     const badgeTexture = useMemo(() => {
-      return getAnswerBadgeTexture(letter, target.optionText, palette.primary, palette.light);
-    }, [letter, target.optionText, palette.primary, palette.light]);
+      return getLetterBadgeTexture(letter, palette.accent);
+    }, [letter, palette.accent]);
 
     const report = (lc: TankLifecycle) => {
       lifecycle.current = lc;
       onLifecycleChange?.(target.id, lc);
     };
 
-    // ── Handle exposed to parent / collision detector ────────────
     useImperativeHandle(ref, () => ({
       triggerHit: () => {
         if (lifecycle.current !== 'active') return;
@@ -174,22 +173,15 @@ export const EnemyTank = forwardRef<EnemyTankHandle, EnemyTankProps>(
       getPosition: () =>
         groupRef.current
           ? groupRef.current.position.clone()
-          : new THREE.Vector3(posX.current, getTerrainHeight(posX.current), 0),
+          : new THREE.Vector3(posX, posY, posZ),
+      getTargetId: () => target.id,
+      getOptionIndex: () => target.optionIndex,
     }));
 
-    const flagRef = useRef<THREE.Group>(null);
-
-    // AI frame loop
     useFrame((_, delta) => {
       const grp = groupRef.current;
       if (!grp) return;
       const dt = Math.min(delta, 0.05);
-
-      // Animate team flag fluttering in the wind
-      if (flagRef.current) {
-        flagRef.current.rotation.y = Math.sin(Date.now() * 0.012 + target.optionIndex * 2) * 0.35;
-        flagRef.current.rotation.z = Math.cos(Date.now() * 0.008 + target.optionIndex) * 0.12;
-      }
 
       if (lifecycle.current === 'destroyed') {
         grp.visible = false;
@@ -199,6 +191,7 @@ export const EnemyTank = forwardRef<EnemyTankHandle, EnemyTankProps>(
       if (lifecycle.current === 'hit') {
         explodeTimer.current -= dt;
         grp.rotation.z += (secureRandom() - 0.5) * 0.3;
+        grp.rotation.x += (secureRandom() - 0.5) * 0.3;
         if (explodeTimer.current <= 0) {
           report('exploding');
           explodeTimer.current = 0.6;
@@ -208,8 +201,8 @@ export const EnemyTank = forwardRef<EnemyTankHandle, EnemyTankProps>(
 
       if (lifecycle.current === 'exploding') {
         explodeTimer.current -= dt;
-        grp.rotation.z += dt * 8;
-        grp.position.y += dt * 2.2;
+        grp.rotation.y += dt * 6;
+        grp.position.y += dt * 2.5;
         grp.scale.multiplyScalar(Math.max(0.01, 1 - dt * 1.5));
         if (explodeTimer.current <= 0) report('destroyed');
         return;
@@ -217,48 +210,40 @@ export const EnemyTank = forwardRef<EnemyTankHandle, EnemyTankProps>(
 
       if (paused) return;
 
-      // AI patrolling movement
-      const boundary = GAME_CONFIG.enemyTank.boundaryX;
-      if (Math.abs(posX.current) > boundary) direction.current *= -1;
-      if (Date.now() > nextTurn.current) {
-        direction.current *= -1;
-        speed.current = randFloat(GAME_CONFIG.enemyTank.minSpeed, GAME_CONFIG.enemyTank.maxSpeed);
-        nextTurn.current =
-          Date.now() +
-          randInt(
-            GAME_CONFIG.enemyTank.changeDirectionInterval[0],
-            GAME_CONFIG.enemyTank.changeDirectionInterval[1]
-          );
+      // ── ENEMY TANK & COMMANDER AIM DIRECTLY TOWARDS PLAYER TANK ──
+      const pPos = playerPosRef?.current ?? new THREE.Vector3(0, 0.5, 10.0);
+      const dx = pPos.x - posX;
+      const dz = pPos.z - posZ;
+      const dy = (pPos.y + 1.2) - (posY + 0.8);
+      const distXZ = Math.hypot(dx, dz);
+
+      // Turret Yaw aiming towards player
+      if (turretRef.current) {
+        const targetYaw = Math.atan2(dx, dz);
+        turretRef.current.rotation.y = THREE.MathUtils.lerp(turretRef.current.rotation.y, targetYaw, dt * 5.0);
       }
 
-      posX.current = Math.max(
-        -boundary,
-        Math.min(boundary, posX.current + direction.current * speed.current * dt)
-      );
-
-      const h = getTerrainHeight(posX.current);
-      const slope = getTerrainAngle(posX.current);
-      const bob = Math.sin(Date.now() * 0.009 + target.optionIndex) * 0.035;
-
-      grp.position.set(posX.current, h + 0.65 + bob, 0);
-      grp.rotation.z = slope;
-
-      if (wheelsRef.current) {
-        wheelsRef.current.children.forEach((w) => {
-          w.rotation.z -= direction.current * speed.current * dt * 2.2;
-        });
+      // Cannon Pitch aiming towards player
+      if (cannonRef.current) {
+        const targetPitch = Math.atan2(dy, distXZ);
+        cannonRef.current.rotation.x = THREE.MathUtils.lerp(cannonRef.current.rotation.x, targetPitch, dt * 5.0);
       }
 
-      // Floating badge gentle bounce & elevated placement
+      // Commander Idle Breathing
+      if (commanderRef.current) {
+        const breathing = Math.sin(Date.now() * 0.003 + target.optionIndex) * 0.03;
+        commanderRef.current.position.y = 1.0 + breathing;
+      }
+
+      // Gentle badge hover bob
       if (badgeRef.current) {
-        const badgeBob = Math.sin(Date.now() * 0.006 + target.optionIndex * 1.5) * 0.12;
-        badgeRef.current.position.set(0, 4.2 + badgeBob, 1.5);
+        const badgeBob = Math.sin(Date.now() * 0.005 + target.optionIndex * 1.5) * 0.12;
+        badgeRef.current.position.set(0, 4.4 + badgeBob, 0);
       }
     });
 
-    const wheelXs = [-1.3, -0.65, 0, 0.65, 1.3];
+    const wheelZs = [-1.2, -0.6, 0, 0.6, 1.2];
 
-    // Only show floating answer badges during active gameplay
     const showBadge =
       (phase === 'playing' ||
         phase === 'aiming' ||
@@ -268,92 +253,192 @@ export const EnemyTank = forwardRef<EnemyTankHandle, EnemyTankProps>(
       lifecycle.current === 'active';
 
     return (
-      <group ref={groupRef}>
-        {/* Tank Faces Left (towards player approaching from left) */}
-        <group scale={[-1, 1, 1]}>
+      <group ref={groupRef} position={[posX, posY + 0.65, posZ]}>
+        {/* Tank Model (Chassis faces +Z towards player in foreground) */}
+        <group ref={chassisRef} rotation={[0, 0, 0]}>
           {/* ── LOWER CHASSIS & TREADS ── */}
-          <mesh position={[0, -0.32, 1.0]} castShadow>
-            <boxGeometry args={[3.4, 0.42, 0.32]} />
-            <meshLambertMaterial color="#212121" />
+          <mesh position={[1.05, -0.3, 0]} castShadow>
+            <boxGeometry args={[0.32, 0.44, 3.2]} />
+            <meshLambertMaterial color={palette.tread} />
           </mesh>
-          <mesh position={[0, -0.32, -1.0]} castShadow>
-            <boxGeometry args={[3.4, 0.42, 0.32]} />
-            <meshLambertMaterial color="#212121" />
-          </mesh>
-
-          {/* 5 Big Roadwheels */}
-          <TankRoadwheels ref={wheelsRef} wheelXs={wheelXs} zOffset={1.05} />
-
-          {/* ── ARMORED HULL ── */}
-          <mesh position={[0, 0.1, 0]} castShadow>
-            <boxGeometry args={[3.0, 0.6, 1.9]} />
-            <meshLambertMaterial color={palette.primary} />
-          </mesh>
-          <mesh position={[0.2, 0.42, 0]} castShadow>
-            <boxGeometry args={[2.2, 0.38, 1.7]} />
-            <meshLambertMaterial color={palette.light} />
-          </mesh>
-          <mesh position={[1.3, 0.22, 0]} rotation={[0, 0, -0.5]} castShadow>
-            <boxGeometry args={[0.8, 0.55, 1.85]} />
-            <meshLambertMaterial color={palette.primary} />
+          <mesh position={[-1.05, -0.3, 0]} castShadow>
+            <boxGeometry args={[0.32, 0.44, 3.2]} />
+            <meshLambertMaterial color={palette.tread} />
           </mesh>
 
-          {/* Front Headlight */}
-          <mesh position={[1.55, 0.25, 0.65]}>
-            <sphereGeometry args={[0.1, 8, 8]} />
-            <meshBasicMaterial color="#fff59d" />
-          </mesh>
-          {/* Rear Danger Taillight */}
-          <mesh position={[-1.52, 0.25, 0.65]}>
-            <boxGeometry args={[0.08, 0.12, 0.2]} />
-            <meshBasicMaterial color="#d50000" />
-          </mesh>
-
-          {/* Waving Team Banner Flag */}
-          <group ref={flagRef} position={[-1.35, 0.55, 0.6]}>
-            {/* Pole */}
-            <mesh position={[0, 0.7, 0]}>
-              <cylinderGeometry args={[0.025, 0.035, 1.4, 6]} />
-              <meshLambertMaterial color="#212121" />
-            </mesh>
-            {/* Triangular Cloth Banner */}
-            <mesh position={[-0.32, 1.15, 0]} rotation={[0, 0, Math.PI / 2]}>
-              <coneGeometry args={[0.3, 0.65, 3]} />
-              <meshLambertMaterial color={palette.primary} />
-            </mesh>
-          </group>
-
-          {/* ── ANGULAR TURRET ── */}
-          <group ref={turretRef} position={[0.1, 0.75, 0]}>
-            <mesh position={[0, 0, 0]} castShadow>
-              <boxGeometry args={[1.8, 0.55, 1.5]} />
-              <meshLambertMaterial color={palette.primary} />
-            </mesh>
-            <mesh position={[0.05, 0.28, 0]} castShadow>
-              <boxGeometry args={[1.5, 0.35, 1.3]} />
-              <meshLambertMaterial color={palette.light} />
-            </mesh>
-
-            {/* Cannon facing forward-left */}
-            <group position={[0.45, 0.18, 0]}>
-              <mesh position={[1.0, 0, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
-                <cylinderGeometry args={[0.12, 0.15, 2.0, 12]} />
+          {/* Roadwheels */}
+          {wheelZs.map((wz, i) => (
+            <group key={`e-wheels-${i}`}>
+              <mesh position={[1.08, -0.3, wz]} rotation={[0, 0, Math.PI / 2]} castShadow>
+                <cylinderGeometry args={[0.3, 0.3, 0.24, 12]} />
                 <meshLambertMaterial color="#37474f" />
               </mesh>
-              <mesh position={[2.05, 0, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
-                <cylinderGeometry args={[0.2, 0.2, 0.35, 12]} />
+              <mesh position={[-1.08, -0.3, wz]} rotation={[0, 0, Math.PI / 2]} castShadow>
+                <cylinderGeometry args={[0.3, 0.3, 0.24, 12]} />
+                <meshLambertMaterial color="#37474f" />
+              </mesh>
+            </group>
+          ))}
+
+          {/* ── ARMORED HULL WITH DISTINCT CAMO COLOR ── */}
+          <mesh position={[0, 0.1, 0]} castShadow>
+            <boxGeometry args={[1.88, 0.6, 3.0]} />
+            <meshLambertMaterial color={palette.body} />
+          </mesh>
+          <mesh position={[0, 0.42, 0.1]} castShadow>
+            <boxGeometry args={[1.68, 0.38, 2.2]} />
+            <meshLambertMaterial color={palette.highlight} />
+          </mesh>
+          <mesh position={[0, 0.2, 1.3]} rotation={[0.5, 0, 0]} castShadow>
+            <boxGeometry args={[1.82, 0.54, 0.75]} />
+            <meshLambertMaterial color={palette.body} />
+          </mesh>
+
+          {/* Team Accent Glow Bars on Armor */}
+          <mesh position={[0.96, 0.4, 0.1]} rotation={[0, Math.PI / 2, 0]}>
+            <boxGeometry args={[0.7, 0.16, 0.05]} />
+            <meshLambertMaterial color={palette.accent} />
+          </mesh>
+          <mesh position={[-0.96, 0.4, 0.1]} rotation={[0, -Math.PI / 2, 0]}>
+            <boxGeometry args={[0.7, 0.16, 0.05]} />
+            <meshLambertMaterial color={palette.accent} />
+          </mesh>
+
+          {/* Front Glowing Team Headlights */}
+          <mesh position={[0.68, 0.28, 1.55]}>
+            <sphereGeometry args={[0.11, 10, 10]} />
+            <meshBasicMaterial color={palette.accent} />
+          </mesh>
+          <mesh position={[-0.68, 0.28, 1.55]}>
+            <sphereGeometry args={[0.11, 10, 10]} />
+            <meshBasicMaterial color={palette.accent} />
+          </mesh>
+
+          {/* ── ROUNDED TURRET & CANNON (Tracks Player in Real-Time) ── */}
+          <group ref={turretRef} position={[0, 0.74, 0.05]}>
+            <mesh position={[0, 0.05, 0]} castShadow>
+              <cylinderGeometry args={[0.92, 1.02, 0.34, 16]} />
+              <meshLambertMaterial color={palette.body} />
+            </mesh>
+            <mesh position={[0, 0.26, 0.05]} castShadow>
+              <sphereGeometry args={[0.82, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2]} />
+              <meshLambertMaterial color={palette.turretTop} />
+            </mesh>
+
+            {/* ── ENEMY TANK COMMANDER MAN (Standing in Turret Roof Hatch) ── */}
+            <group ref={commanderRef} position={[0, 1.0, -0.05]} scale={[1.05, 1.05, 1.05]}>
+              {/* Cupola Hatch Ring */}
+              <mesh position={[0, -0.05, 0]} castShadow>
+                <cylinderGeometry args={[0.42, 0.46, 0.16, 14]} />
+                <meshLambertMaterial color={palette.body} />
+              </mesh>
+              <mesh position={[0, 0.01, 0]}>
+                <cylinderGeometry args={[0.34, 0.34, 0.04, 14]} />
+                <meshLambertMaterial color="#111111" />
+              </mesh>
+
+              {/* Enemy Commander Torso in Team Camo Uniform */}
+              <mesh position={[0, 0.24, 0]} castShadow>
+                <boxGeometry args={[0.46, 0.46, 0.3]} />
+                <meshLambertMaterial color={palette.body} />
+              </mesh>
+              {/* Chest Accent Webbing Straps */}
+              <mesh position={[0, 0.26, 0.1]}>
+                <boxGeometry args={[0.28, 0.28, 0.12]} />
+                <meshLambertMaterial color={palette.accent} />
+              </mesh>
+
+              {/* Commander Head / Neck */}
+              <mesh position={[0, 0.58, 0]} castShadow>
+                <sphereGeometry args={[0.19, 12, 12]} />
+                <meshLambertMaterial color="#d7ccc8" />
+              </mesh>
+
+              {/* Enemy Tanker Helmet with Team Color */}
+              <mesh position={[0, 0.65, 0]} castShadow>
+                <sphereGeometry args={[0.23, 14, 12, 0, Math.PI * 2, 0, Math.PI / 1.6]} />
+                <meshLambertMaterial color={palette.highlight} />
+              </mesh>
+              <mesh position={[0, 0.64, 0]}>
+                <torusGeometry args={[0.22, 0.03, 8, 14]} />
+                <meshLambertMaterial color={palette.accent} />
+              </mesh>
+
+              {/* Tactical Aviator Shades / Goggles */}
+              <mesh position={[0, 0.6, 0.18]}>
+                <boxGeometry args={[0.24, 0.08, 0.08]} />
+                <meshLambertMaterial color={palette.accent} />
+              </mesh>
+
+              {/* Radio Headset */}
+              <mesh position={[0.21, 0.58, 0]}>
+                <cylinderGeometry args={[0.07, 0.07, 0.06, 8]} />
                 <meshLambertMaterial color="#212121" />
+              </mesh>
+              <mesh position={[-0.21, 0.58, 0]}>
+                <cylinderGeometry args={[0.07, 0.07, 0.06, 8]} />
+                <meshLambertMaterial color="#212121" />
+              </mesh>
+
+              {/* Arms Gripping Hatch Rim & Holding Binoculars Forward */}
+              <group position={[-0.28, 0.2, 0.1]} rotation={[0.4, -0.3, 0.2]}>
+                <mesh position={[0, 0, 0]}>
+                  <cylinderGeometry args={[0.08, 0.09, 0.32, 8]} />
+                  <meshLambertMaterial color={palette.body} />
+                </mesh>
+                <mesh position={[0, -0.16, 0]}>
+                  <sphereGeometry args={[0.08, 8, 8]} />
+                  <meshLambertMaterial color="#212121" />
+                </mesh>
+              </group>
+              <group position={[0.28, 0.2, 0.1]} rotation={[0.4, 0.3, -0.2]}>
+                <mesh position={[0, 0, 0]}>
+                  <cylinderGeometry args={[0.08, 0.09, 0.32, 8]} />
+                  <meshLambertMaterial color={palette.body} />
+                </mesh>
+                <mesh position={[0, -0.16, 0]}>
+                  <sphereGeometry args={[0.08, 8, 8]} />
+                  <meshLambertMaterial color="#212121" />
+                </mesh>
+              </group>
+
+              {/* Military Binoculars Aimed at Player */}
+              <group position={[0, 0.32, 0.26]}>
+                <mesh position={[-0.06, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                  <cylinderGeometry args={[0.045, 0.055, 0.18, 8]} />
+                  <meshLambertMaterial color="#212121" />
+                </mesh>
+                <mesh position={[0.06, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                  <cylinderGeometry args={[0.045, 0.055, 0.18, 8]} />
+                  <meshLambertMaterial color="#212121" />
+                </mesh>
+                <mesh position={[0, 0, 0]}>
+                  <boxGeometry args={[0.16, 0.045, 0.07]} />
+                  <meshLambertMaterial color="#37474f" />
+                </mesh>
+              </group>
+            </group>
+
+            {/* Cannon facing towards player */}
+            <group ref={cannonRef} position={[0, 0.16, 0.4]}>
+              <mesh position={[0, 0, 1.1]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+                <cylinderGeometry args={[0.12, 0.15, 2.3, 12]} />
+                <meshLambertMaterial color={palette.barrel} />
+              </mesh>
+              <mesh position={[0, 0, 2.3]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+                <cylinderGeometry args={[0.19, 0.19, 0.38, 12]} />
+                <meshLambertMaterial color="#1a1a1a" />
               </mesh>
             </group>
           </group>
         </group>
 
-        {/* ── HIGH PERFORMANCE 3D CANVAS TEXTURE BILLBOARD (ALWAYS ON TOP, ZERO OCCLUSION) ── */}
+        {/* ── CRISP FLOATING TACTICAL BADGE (A, B, C, D) ── */}
         {showBadge && (
           <sprite
             ref={badgeRef}
-            position={[0, 4.2, 1.5]}
-            scale={[5.2, 1.3, 1]}
+            position={[0, 4.4, 0]}
+            scale={[3.2, 1.75, 1]}
             renderOrder={999}
           >
             <spriteMaterial
@@ -371,5 +456,3 @@ export const EnemyTank = forwardRef<EnemyTankHandle, EnemyTankProps>(
 );
 
 EnemyTank.displayName = 'EnemyTank';
-
-

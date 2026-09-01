@@ -1,12 +1,12 @@
 import { useCallback, useRef, useState, useEffect } from 'react';
 import { GameScene, type GameSceneHandle } from './game/GameScene';
 import { useGameStore } from './game/gameStore';
-import { AudioManager } from './audio/AudioManager';
 
 // HUD
 import { QuestionPanel } from './ui/hud/QuestionPanel';
 import { ScorePanel } from './ui/hud/ScorePanel';
 import { ControlBar } from './ui/hud/ControlBar';
+import { OptionsTray } from './ui/hud/OptionsTray';
 
 // Overlays
 import { LoadingOverlay } from './ui/overlays/LoadingOverlay';
@@ -28,7 +28,7 @@ function KeyboardGuide() {
 
   useEffect(() => {
     if (phase === 'playing') {
-      const t = setTimeout(() => setVisible(false), 5000);
+      const t = setTimeout(() => setVisible(false), 5500);
       return () => clearTimeout(t);
     }
     return undefined;
@@ -38,9 +38,9 @@ function KeyboardGuide() {
   if (!isActive || !visible) return null;
 
   const hints = [
-    { key: 'Mouse Cursor', desc: 'Aim 360°' },
-    { key: 'Click / Space', desc: 'Fire Cannon' },
-    { key: 'A / D', desc: 'Drive Left / Right' },
+    { key: 'Hold & Drag', desc: 'Aim 3D Cannon' },
+    { key: 'FIRE Button / Space', desc: 'Shoot Artillery' },
+    { key: 'A / D (◀ ▶)', desc: 'Drive Ridge' },
     { key: 'P / Esc', desc: 'Pause' },
     { key: 'H', desc: 'Hint' },
     { key: 'M', desc: 'Mute' },
@@ -51,13 +51,13 @@ function KeyboardGuide() {
       className="keyboard-guide-hud"
       style={{
         position: 'absolute',
-        bottom: 24,
+        bottom: 84,
         left: '50%',
         transform: 'translateX(-50%)',
         display: 'flex',
-        gap: 12,
+        gap: 10,
         pointerEvents: 'none',
-        opacity: 0.85,
+        opacity: 0.9,
         transition: 'opacity 1s ease',
         zIndex: 15,
       }}
@@ -66,8 +66,8 @@ function KeyboardGuide() {
         <div
           key={h.key}
           style={{
-            background: 'rgba(15, 23, 42, 0.88)',
-            border: '1px solid rgba(255, 255, 255, 0.18)',
+            background: 'rgba(15, 23, 42, 0.92)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
             borderRadius: 8,
             padding: '4px 10px',
             color: '#e2e8f0',
@@ -75,8 +75,8 @@ function KeyboardGuide() {
             fontSize: 11,
             fontWeight: 700,
             letterSpacing: '0.06em',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-            backdropFilter: 'blur(4px)',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.5)',
+            backdropFilter: 'blur(6px)',
           }}
         >
           <span style={{ color: 'var(--col-gold)', marginRight: 6 }}>{h.key}</span>
@@ -88,7 +88,32 @@ function KeyboardGuide() {
 }
 
 // ─────────────────────────────────────────────────────────────────
-//  Mobile controls — Pure Dual Thumb Layout (No duplicate buttons)
+//  Desktop Arcade Fire Button
+// ─────────────────────────────────────────────────────────────────
+function DesktopFireButton({ onFire }: { onFire: () => void }) {
+  const { phase } = useGameStore();
+  const isActive = phase === 'playing' || phase === 'aiming';
+  if (!isActive) return null;
+
+  return (
+    <div className="desktop-fire-container">
+      <button
+        className="desktop-fire-btn"
+        aria-label="Fire Cannon"
+        onClick={(e) => {
+          e.stopPropagation();
+          onFire();
+        }}
+      >
+        <span className="fire-icon">💥</span>
+        <span className="fire-text">FIRE</span>
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Mobile controls — Dual Thumb Layout
 // ─────────────────────────────────────────────────────────────────
 interface MobileControlsProps {
   onLeftStart: () => void;
@@ -109,7 +134,7 @@ function MobileControls({
 
   return (
     <div className="mobile-controls" aria-label="Mobile game controls">
-      {/* Left thumb — Movement */}
+      {/* Left thumb — Movement buttons */}
       <div className="move-group">
         <button
           className="move-btn"
@@ -151,7 +176,6 @@ function MobileControls({
   );
 }
 
-
 // ─────────────────────────────────────────────────────────────────
 //  Procedural Confetti Overlay for Victory & High Streaks
 // ─────────────────────────────────────────────────────────────────
@@ -169,47 +193,41 @@ function ConfettiCelebration() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    const colors = ['#ffd54f', '#4caf50', '#29b6f6', '#ff4081', '#ff9800', '#ab47bc'];
-    const particles = Array.from({ length: 65 }, () => ({
+    const particles = Array.from({ length: 90 }, () => ({
       x: Math.random() * canvas.width,
-      y: -20 - Math.random() * 80,
-      w: 8 + Math.random() * 8,
-      h: 5 + Math.random() * 6,
+      y: -20 - Math.random() * 200,
       vx: (Math.random() - 0.5) * 4,
-      vy: 2 + Math.random() * 4,
-      rot: Math.random() * Math.PI * 2,
-      vRot: (Math.random() - 0.5) * 0.15,
-      col: colors[Math.floor(Math.random() * colors.length)],
+      vy: 3 + Math.random() * 5,
+      size: 6 + Math.random() * 8,
+      color: ['#ffd54f', '#4caf50', '#29b6f6', '#ab47bc', '#ff5252'][Math.floor(Math.random() * 5)],
+      rot: Math.random() * 360,
+      vrot: (Math.random() - 0.5) * 12,
     }));
 
     let animId: number;
-    const render = () => {
+    const draw = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       particles.forEach((p) => {
         p.x += p.vx;
         p.y += p.vy;
-        p.rot += p.vRot;
-        if (p.y > canvas.height + 20) {
-          p.y = -10;
-          p.x = Math.random() * canvas.width;
-        }
+        p.rot += p.vrot;
+        if (p.y > canvas.height + 20) p.y = -20;
 
         ctx.save();
         ctx.translate(p.x, p.y);
-        ctx.rotate(p.rot);
-        ctx.fillStyle = p.col;
-        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.rotate((p.rot * Math.PI) / 180);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
         ctx.restore();
       });
-      animId = requestAnimationFrame(render);
+      animId = requestAnimationFrame(draw);
     };
+    draw();
 
-    render();
     return () => cancelAnimationFrame(animId);
   }, [phase]);
 
   if (phase !== 'game-over') return null;
-
   return (
     <canvas
       ref={canvasRef}
@@ -217,61 +235,67 @@ function ConfettiCelebration() {
         position: 'absolute',
         inset: 0,
         pointerEvents: 'none',
-        zIndex: 50,
+        zIndex: 55,
       }}
     />
   );
 }
 
 // ─────────────────────────────────────────────────────────────────
-//  Screen Impact Vignette (Juice on Hit/Miss)
+//  Flash Screen Vignette for Damage & Hits
 // ─────────────────────────────────────────────────────────────────
 function ScreenVignette() {
-  const { phase, lastResult } = useGameStore();
-  if (phase !== 'resolving' || !lastResult) return null;
+  const { lastResult, phase } = useGameStore();
+  const [flashType, setFlashType] = useState<'hit' | 'miss' | null>(null);
 
-  const className =
-    lastResult === 'correct'
-      ? 'screen-vignette screen-vignette--correct'
-      : 'screen-vignette screen-vignette--wrong';
+  useEffect(() => {
+    if (phase === 'resolving') {
+      if (lastResult === 'correct') {
+        setFlashType('hit');
+      } else if (lastResult === 'wrong' || lastResult === 'miss') {
+        setFlashType('miss');
+      }
+      const t = setTimeout(() => setFlashType(null), 350);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [phase, lastResult]);
 
-  return <div className={className} aria-hidden="true" />;
+  if (!flashType) return null;
+
+  const bg =
+    flashType === 'hit'
+      ? 'radial-gradient(ellipse at center, rgba(76, 175, 80, 0) 40%, rgba(76, 175, 80, 0.45) 100%)'
+      : 'radial-gradient(ellipse at center, rgba(244, 67, 54, 0) 40%, rgba(244, 67, 54, 0.55) 100%)';
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: bg,
+        pointerEvents: 'none',
+        zIndex: 40,
+        animation: 'vignetteFlash 0.35s ease-out forwards',
+      }}
+    />
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────
-//  Main App
+//  Main App Component
 // ─────────────────────────────────────────────────────────────────
 export default function App() {
   const sceneRef = useRef<GameSceneHandle>(null);
+  const { startNewGame } = useGameStore();
 
-  // Fire action
+  useEffect(() => {
+    startNewGame();
+  }, [startNewGame]);
+
   const handleFire = useCallback(() => {
     sceneRef.current?.triggerFire();
   }, []);
-
-  // Desktop-only click-to-fire on game canvas (touchscreens only fire via the dedicated FIRE button!)
-  const handleCanvasClick = useCallback((e: React.MouseEvent) => {
-    // 1. Strictly ignore touch events / mobile devices
-    const isTouchDevice =
-      ('ontouchstart' in window) ||
-      navigator.maxTouchPoints > 0 ||
-      window.matchMedia('(hover: none) and (pointer: coarse)').matches;
-    if (isTouchDevice) return;
-
-    // 2. Ignore clicks on buttons, HUD overlays, or control bars
-    const target = e.target as HTMLElement;
-    if (
-      target.closest('button') ||
-      target.closest('.arcade-question-header') ||
-      target.closest('.score-panel') ||
-      target.closest('.overlay-card') ||
-      target.closest('.top-utility-bar') ||
-      target.closest('.mobile-controls')
-    ) {
-      return;
-    }
-    handleFire();
-  }, [handleFire]);
 
   // Mobile movement callbacks
   const handleLeftStart = useCallback(() => { sceneRef.current?.setMobileKeys({ left: true }); }, []);
@@ -280,7 +304,7 @@ export default function App() {
   const handleRightEnd = useCallback(() => { sceneRef.current?.setMobileKeys({ right: false }); }, []);
 
   return (
-    <div className="game-root" onMouseDown={handleCanvasClick}>
+    <div className="game-root">
       {/* 3D Game Scene */}
       <GameScene ref={sceneRef} />
 
@@ -292,7 +316,12 @@ export default function App() {
         <QuestionPanel />
         <ScorePanel />
         <ControlBar />
+
+        {/* Helicopter Trivia Style Bottom Options Tray (Informational Legend) */}
+        <OptionsTray />
+
         <KeyboardGuide />
+        <DesktopFireButton onFire={handleFire} />
         <MobileControls
           onLeftStart={handleLeftStart}
           onLeftEnd={handleLeftEnd}
@@ -316,4 +345,3 @@ export default function App() {
     </div>
   );
 }
-

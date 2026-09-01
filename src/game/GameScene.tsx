@@ -20,28 +20,23 @@ import { useKeyboard, type KeyState } from '../controls/useKeyboard';
 import { useGameStore } from './gameStore';
 import { GAME_CONFIG } from './gameConfig';
 import { AudioManager } from '../audio/AudioManager';
-import { randFloat } from '../utils/math';
 import type { TankTarget } from './gameTypes';
 
 // ─────────────────────────────────────────────────────────────────
 //  Public handle exposed by GameScene
 // ─────────────────────────────────────────────────────────────────
 export interface GameSceneHandle {
-  /** Update external touch key state from UI overlay */
-  setMobileKeys:  (keys: Partial<KeyState>) => void;
-  /** Direct cannon elevation control */
-  setCannonAngle: (angle: number) => void;
-  /** Let App trigger fire */
-  triggerFire:    () => void;
+  setMobileKeys: (keys: Partial<KeyState>) => void;
+  triggerFire:   () => void;
 }
 
 // ─────────────────────────────────────────────────────────────────
 //  Inner scene (inside R3F context)
 // ─────────────────────────────────────────────────────────────────
 interface SceneInnerProps {
-  externalKeys:   React.MutableRefObject<KeyState>;
-  fireSignal:     React.MutableRefObject<boolean>;
-  playerRef:      React.RefObject<PlayerTankHandle>;
+  externalKeys: React.MutableRefObject<KeyState>;
+  fireSignal:   React.MutableRefObject<boolean>;
+  playerRef:    React.RefObject<PlayerTankHandle>;
 }
 
 interface ProjectileState {
@@ -80,8 +75,8 @@ function getScoreCanvasTexture(text: string, color: string): THREE.CanvasTexture
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
-    ctx.shadowBlur = 12;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.95)';
+    ctx.shadowBlur = 14;
     ctx.shadowOffsetY = 4;
 
     ctx.fillStyle = color;
@@ -104,16 +99,16 @@ function FloatingScoreSprite({ item }: { item: FloatingScoreItem }) {
   useFrame((_, delta) => {
     if (!spriteRef.current) return;
     const dt = Math.min(delta, 0.05);
-    spriteRef.current.position.y += dt * 3.2;
+    spriteRef.current.position.y += dt * 3.5;
     const scale = 1.0 + Math.sin(Math.min(1, item.age * 3) * Math.PI) * 0.25;
-    spriteRef.current.scale.set(3.6 * scale, 1.35 * scale, 1);
+    spriteRef.current.scale.set(4.2 * scale, 1.6 * scale, 1);
   });
 
   return (
     <sprite
       ref={spriteRef}
-      position={[item.pos.x, item.pos.y, 2.5]}
-      scale={[3.6, 1.35, 1]}
+      position={[item.pos.x, item.pos.y, item.pos.z + 1.0]}
+      scale={[4.2, 1.6, 1]}
       renderOrder={999}
     >
       <spriteMaterial
@@ -121,12 +116,19 @@ function FloatingScoreSprite({ item }: { item: FloatingScoreItem }) {
         transparent
         depthTest={false}
         depthWrite={false}
-        opacity={Math.max(0, 1 - item.age / 1.1)}
+        opacity={Math.max(0, 1 - item.age / 1.2)}
       />
     </sprite>
   );
 }
 
+// ── 4 Distinct Front Ridge Coordinates for Enemy Tanks (A, B, C, D) ──
+const BASE_ENEMY_COORDS: [number, number][] = [
+  [-18, -16], // Tank A (Left Ridge)
+  [-6, -20],  // Tank B (Mid-Left Peak)
+  [6, -20],   // Tank C (Mid-Right Peak)
+  [18, -16],  // Tank D (Right Ridge)
+];
 
 function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
   const {
@@ -137,7 +139,7 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
   // Keyboard state
   const { keys: kbKeys, oneShot } = useKeyboard();
 
-  // Unified keys ref combining keyboard + mobile touch controls every frame
+  // Unified keys ref combining keyboard + mobile touch controls
   const unifiedKeys = useRef<KeyState>({ left: false, right: false, up: false, down: false });
   const tankFireSignal = useRef(false);
 
@@ -155,7 +157,7 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
   const scoreCounter = useRef(0);
   const shakeRef = useRef(0);
 
-  // ── Current question targets (preserve exact backend order) ──
+  // ── Current question targets ──────────────────────────────────
   const targets = useMemo<TankTarget[]>(() => {
     if (!questions.length) return [];
     const q = questions[currentQuestionIndex];
@@ -167,15 +169,19 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
     }));
   }, [questions, currentQuestionIndex, questionSessionId]);
 
-  const enemyStartXs = useMemo(() => {
+  // Assign 4 distinct ridge positions in front
+  const enemyPositions = useMemo<[number, number][]>(() => {
     const count = targets.length;
     if (count === 0) return [];
-    if (count === 1) return [15];
-    const span = 80; // from -40 to +40
-    const step = span / (count - 1);
-    const start = -40;
-    return Array.from({ length: count }, (_, i) => start + i * step + randFloat(-2, 2));
-  }, [targets.length, questionSessionId]);
+    return Array.from({ length: count }, (_, i) => {
+      if (i < BASE_ENEMY_COORDS.length) {
+        return BASE_ENEMY_COORDS[i];
+      }
+      const span = 42;
+      const step = span / Math.max(1, count - 1);
+      return [-21 + i * step, -18 - (i % 2) * 4] as [number, number];
+    });
+  }, [targets.length]);
 
   useEffect(() => {
     enemyTargetIds.current = targets.map((t) => t.id);
@@ -196,9 +202,21 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
     AudioManager.setMuted(muted);
   }, [muted]);
 
+  const playerPosRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 0.5, 10.0));
+  const allEnemyPositionsRef = useRef<THREE.Vector3[]>([]);
+
   // ── Frame Loop: Unified Controls & State Transitions ───────────
   useFrame((_, delta) => {
     const dt = Math.min(delta, 0.05);
+
+    // Track player tank position in 3D for enemy tank turrets
+    const p = playerRef.current?.getPosition();
+    if (p) playerPosRef.current.copy(p);
+
+    // Track all active enemy tank positions for trajectory collision stopping
+    allEnemyPositionsRef.current = enemyRefs.current
+      .map((e) => e?.getPosition())
+      .filter((pos): pos is THREE.Vector3 => Boolean(pos));
 
     // Decay camera shake smoothly
     if (shakeRef.current > 0.001) {
@@ -212,17 +230,17 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
       setFloatingScores((prev) =>
         prev
           .map((s) => ({ ...s, age: s.age + dt }))
-          .filter((s) => s.age < 1.1)
+          .filter((s) => s.age < 1.2)
       );
     }
 
-    // 1. Merge keyboard and mobile touch keys smoothly every frame
+    // Merge keyboard and mobile touch keys
     unifiedKeys.current.left  = Boolean(kbKeys.current.left  || externalKeys.current.left);
     unifiedKeys.current.right = Boolean(kbKeys.current.right || externalKeys.current.right);
     unifiedKeys.current.up    = Boolean(kbKeys.current.up    || externalKeys.current.up);
     unifiedKeys.current.down  = Boolean(kbKeys.current.down  || externalKeys.current.down);
 
-    // 2. Consume keyboard hotkeys
+    // Consume keyboard hotkeys
     if (oneShot.current.pause) {
       oneShot.current.pause = false;
       const p = useGameStore.getState().phase;
@@ -239,7 +257,7 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
       if (p === 'playing' || p === 'aiming') useGameStore.getState().setHintVisible(true);
     }
 
-    // 3. Fire trigger from keyboard (Space) or mobile/touch button
+    // Fire trigger from Space or UI button
     if ((oneShot.current.fire || fireSignal.current) && !hasResolved.current) {
       oneShot.current.fire = false;
       fireSignal.current = false;
@@ -254,11 +272,11 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
   // ── Fire callback ─────────────────────────────────────────────
   const handleFire = useCallback((origin: THREE.Vector3, velocity: THREE.Vector3) => {
     if (hasResolved.current) return;
-    shakeRef.current = Math.max(shakeRef.current, 0.22);
+    shakeRef.current = Math.max(shakeRef.current, 0.25);
     setActiveProjectile({ id: projCounter.current++, origin: origin.clone(), velocity: velocity.clone() });
   }, []);
 
-  // ── Tank hit ──────────────────────────────────────────────────
+  // ── Tank hit in 3D ────────────────────────────────────────────
   const handleHitTank = useCallback((tankId: string) => {
     if (hasResolved.current) return;
     hasResolved.current = true;
@@ -278,7 +296,7 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
       setTimeout(() => AudioManager.play('combo'), 180);
     }
 
-    shakeRef.current = Math.max(shakeRef.current, result === 'correct' ? 0.65 : 0.45);
+    shakeRef.current = Math.max(shakeRef.current, result === 'correct' ? 0.7 : 0.45);
 
     const idx = targets.indexOf(target);
     enemyRefs.current[idx]?.triggerHit();
@@ -296,7 +314,7 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
         id: scoreCounter.current++,
         text: popupText,
         color: popupColor,
-        pos: pos.clone().add(new THREE.Vector3(0, 2.5, 0)),
+        pos: pos.clone().add(new THREE.Vector3(0, 3.2, 0)),
         age: 0,
       },
     ]);
@@ -304,7 +322,7 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
     setTimeout(() => advanceQuestion(), GAME_CONFIG.feedback.displayTime);
   }, [targets, streak, resolveShot, advanceQuestion]);
 
-  // ── Terrain hit ───────────────────────────────────────────────
+  // ── Terrain hit in 3D ─────────────────────────────────────────
   const handleHitTerrain = useCallback((impactPos?: THREE.Vector3) => {
     if (hasResolved.current) return;
     hasResolved.current = true;
@@ -316,9 +334,9 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
     AudioManager.play('wrong');
     AudioManager.play('impact');
 
-    shakeRef.current = Math.max(shakeRef.current, 0.3);
+    shakeRef.current = Math.max(shakeRef.current, 0.35);
 
-    const pos = impactPos ?? (activeProjectile ? activeProjectile.origin : new THREE.Vector3(0, getTerrainHeight(0), 0));
+    const pos = impactPos ?? (activeProjectile ? activeProjectile.origin : new THREE.Vector3(0, getTerrainHeight(0, -18), -18));
     setExplosions((e) => [...e, { id: explCounter.current++, pos, type: 'terrain' }]);
 
     setFloatingScores((prev) => [
@@ -327,7 +345,7 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
         id: scoreCounter.current++,
         text: 'MISS -10',
         color: '#ff9800',
-        pos: pos.clone().add(new THREE.Vector3(0, 1.8, 0)),
+        pos: pos.clone().add(new THREE.Vector3(0, 2.2, 0)),
         age: 0,
       },
     ]);
@@ -345,54 +363,66 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
   return (
     <>
       <ResponsiveCamera shakeRef={shakeRef} playerRef={playerRef} />
-      <ambientLight intensity={0.95} />
+      <fog attach="fog" args={['#b8d0e0', 50, 140]} />
 
+      {/* Realistic Hemisphere Light (Sky Blue top, Warm Earth bottom) */}
+      <hemisphereLight args={['#e0f2fe', '#8d735c', 0.95]} />
+
+      {/* Main Front-Side Key Sunlight (Bright, warm illumination on player tank & battlefield) */}
       <directionalLight
-        position={[25, 45, 20]}
-        intensity={1.8}
+        position={[18, 38, 28]}
+        intensity={2.2}
+        color="#fffbf0"
         castShadow
         shadow-mapSize={[2048, 2048]}
-        shadow-camera-near={0.5}
-        shadow-camera-far={120}
-        shadow-camera-left={-60}
-        shadow-camera-right={60}
-        shadow-camera-top={35}
-        shadow-camera-bottom={-25}
+        shadow-camera-near={1.0}
+        shadow-camera-far={140}
+        shadow-camera-left={-50}
+        shadow-camera-right={50}
+        shadow-camera-top={40}
+        shadow-camera-bottom={-40}
+        shadow-bias={-0.0003}
       />
-      <directionalLight position={[-20, 20, -10]} intensity={0.5} color="#b3e5fc" />
-      <directionalLight position={[0, -15, 10]} intensity={0.3} color="#81c784" />
+
+      {/* Backlight / Rim Light (Edge highlights on tanks & mountains) */}
+      <directionalLight position={[-18, 28, -25]} intensity={0.85} color="#e0f2fe" />
+
+      {/* Player Tank Local Fill (Ensures player tank & commander are bright and crisp) */}
+      <pointLight position={[0, 8, 16]} intensity={0.65} color="#fffaed" distance={25} />
 
       <Environment />
       <Terrain />
 
-      {/* Trajectory preview dots */}
+      {/* Trajectory preview dots in 3D */}
       <primitive object={trajectoryGroupRef.current} />
 
-      {/* Player Tank with Unified Controls */}
+      {/* 3D Player Tank (Centered in foreground) */}
       <PlayerTank
         ref={playerRef}
         keys={unifiedKeys}
         fireSignal={tankFireSignal}
+        enemyPositionsRef={allEnemyPositionsRef}
         onFire={handleFire}
         paused={paused}
         showTrajectory={showTrajectory}
         trajectoryGroupRef={trajectoryGroupRef}
       />
 
-      {/* Enemy answer tanks */}
+      {/* 3D Enemy answer tanks stationed on 4 front ridges */}
       {targets.map((target, idx) => (
         <EnemyTankWrapper
           key={target.id}
           target={target}
-          initialX={enemyStartXs[idx] ?? idx * 18}
+          initialPos={enemyPositions[idx] ?? [0, -18]}
           paused={paused}
+          playerPosRef={playerPosRef}
           enemyRef={(handle) => {
             enemyRefs.current[idx] = handle;
           }}
         />
       ))}
 
-      {/* Active Artillery Projectile */}
+      {/* Active 3D Artillery Shell */}
       {activeProjectile && (
         <Projectile
           key={activeProjectile.id}
@@ -407,6 +437,7 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
         />
       )}
 
+      {/* 3D Explosions */}
       {explosions.map((ex) => (
         <Explosion
           key={ex.id}
@@ -425,16 +456,17 @@ function SceneInner({ externalKeys, fireSignal, playerRef }: SceneInnerProps) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-//  EnemyTankWrapper — minimal wrapper to collect ref
+//  EnemyTankWrapper
 // ─────────────────────────────────────────────────────────────────
 interface WrapperProps {
-  target:    TankTarget;
-  initialX:  number;
-  paused:    boolean;
-  enemyRef:  (h: EnemyTankHandle | null) => void;
+  target:        TankTarget;
+  initialPos:    [number, number];
+  paused:        boolean;
+  playerPosRef?: React.MutableRefObject<THREE.Vector3>;
+  enemyRef:      (h: EnemyTankHandle | null) => void;
 }
 
-function EnemyTankWrapper({ target, initialX, paused, enemyRef }: WrapperProps) {
+function EnemyTankWrapper({ target, initialPos, paused, playerPosRef, enemyRef }: WrapperProps) {
   const localRef = useRef<EnemyTankHandle>(null);
 
   useEffect(() => {
@@ -442,9 +474,20 @@ function EnemyTankWrapper({ target, initialX, paused, enemyRef }: WrapperProps) 
     return () => { enemyRef(null); };
   });
 
-  return <EnemyTank ref={localRef} target={target} initialX={initialX} paused={paused} />;
+  return (
+    <EnemyTank
+      ref={localRef}
+      target={target}
+      initialPos={initialPos}
+      paused={paused}
+      playerPosRef={playerPosRef}
+    />
+  );
 }
 
+// ─────────────────────────────────────────────────────────────────
+//  3D Centered Perspective Camera (Perfect View of Tank & 4 Ridges)
+// ─────────────────────────────────────────────────────────────────
 function ResponsiveCamera({
   shakeRef,
   playerRef,
@@ -458,18 +501,8 @@ function ResponsiveCamera({
     const aspect = size.width / Math.max(1, size.height);
     const isPortrait = aspect < 1.0;
 
-    // 1. Target FOV and distance based on viewport
-    const targetFov = isPortrait ? 58 : 42;
-    const targetCamZ = isPortrait ? 36 : 24.5;
-
-    // 2. Track Player Tank's current position and facing
-    const playerPos = playerRef.current?.getPosition() ?? new THREE.Vector3(-22, 0, 0);
-    const playerFacing = playerRef.current?.getFacing?.() ?? 1;
-
-    // Forward lead in facing direction
-    const leadX = isPortrait ? playerFacing * 4.0 : playerFacing * 6.5;
-    const targetCamX = playerPos.x + leadX;
-    const targetCamY = isPortrait ? playerPos.y + 6.0 : playerPos.y + 3.8;
+    const targetFov = isPortrait ? 54 : 44;
+    const playerPos = playerRef.current?.getPosition() ?? new THREE.Vector3(0, 0.5, 10.0);
 
     const cam = camera as THREE.PerspectiveCamera;
     if (Math.abs(cam.fov - targetFov) > 0.05) {
@@ -477,32 +510,39 @@ function ResponsiveCamera({
       cam.updateProjectionMatrix();
     }
 
-    // Camera shake offset
+    // Shake offset
     const shake = shakeRef.current;
     const shakeX = (Math.random() - 0.5) * shake * 1.5;
     const shakeY = (Math.random() - 0.5) * shake * 1.5;
 
-    // Smooth Lerp Camera Position
-    cam.position.x = THREE.MathUtils.lerp(cam.position.x, targetCamX + shakeX, 0.08);
-    cam.position.y = THREE.MathUtils.lerp(cam.position.y, targetCamY + shakeY, 0.08);
-    cam.position.z = THREE.MathUtils.lerp(cam.position.z, targetCamZ, 0.08);
+    // Camera tracks 1:1 with player on X to keep tank DEAD-CENTERED horizontally at all times
+    const targetCamX = playerPos.x + shakeX;
+    const targetCamY = isPortrait ? playerPos.y + 9.5 + shakeY : playerPos.y + 6.5 + shakeY;
+    const targetCamZ = isPortrait ? playerPos.z + 16.0 : playerPos.z + 12.5;
 
-    // Always smoothly orient camera towards player action zone
-    cam.lookAt(playerPos.x + leadX * 0.75, playerPos.y + 2.0, 0);
+    cam.position.x = THREE.MathUtils.lerp(cam.position.x, targetCamX, 0.12);
+    cam.position.y = THREE.MathUtils.lerp(cam.position.y, targetCamY, 0.12);
+    cam.position.z = THREE.MathUtils.lerp(cam.position.z, targetCamZ, 0.12);
+
+    // Camera looks directly forward from player position across the 4 front ridges
+    const lookTargetX = playerPos.x;
+    const lookTargetY = isPortrait ? playerPos.y + 3.2 : playerPos.y + 2.4;
+    const lookTargetZ = isPortrait ? playerPos.z - 26.0 : playerPos.z - 24.0;
+
+    cam.lookAt(lookTargetX, lookTargetY, lookTargetZ);
   });
   return null;
 }
 
-
 // ─────────────────────────────────────────────────────────────────
-//  Helper: create trajectory dot group
+//  Helper: create 3D trajectory dot group
 // ─────────────────────────────────────────────────────────────────
 function createTrajectoryGroup(): THREE.Group {
   const grp = new THREE.Group();
-  for (let i = 0; i < 14; i++) {
-    const geo = new THREE.SphereGeometry(0.22, 10, 10);
+  for (let i = 0; i < 24; i++) {
+    const geo = new THREE.SphereGeometry(0.25, 10, 10);
     const mat = new THREE.MeshBasicMaterial({
-      color: 0xffea00,
+      color: 0x69f0ae,
       transparent: true,
       opacity: 0.9,
     });
@@ -524,9 +564,8 @@ export const GameScene = forwardRef<GameSceneHandle, GameSceneProps>((_props, re
   const playerRef    = useRef<PlayerTankHandle>(null);
 
   useImperativeHandle(ref, () => ({
-    setMobileKeys:  (k) => { Object.assign(externalKeys.current, k); },
-    setCannonAngle: (a) => { playerRef.current?.setCannonAngle(a); },
-    triggerFire:    ()  => {
+    setMobileKeys: (k) => { Object.assign(externalKeys.current, k); },
+    triggerFire:   () => {
       const p = useGameStore.getState().phase;
       if (p === 'playing' || p === 'aiming') {
         useGameStore.getState().setPhase('firing');
@@ -538,7 +577,7 @@ export const GameScene = forwardRef<GameSceneHandle, GameSceneProps>((_props, re
   return (
     <Canvas
       shadows
-      camera={{ position: [-22, 5, 23], fov: 42 }}
+      camera={{ position: [0, 8.0, 24], fov: 44 }}
       style={{ position: 'absolute', inset: 0 }}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
       dpr={[1, Math.min(typeof window !== 'undefined' ? window.devicePixelRatio : 1, 2)]}
@@ -555,4 +594,3 @@ export const GameScene = forwardRef<GameSceneHandle, GameSceneProps>((_props, re
 });
 
 GameScene.displayName = 'GameScene';
-
