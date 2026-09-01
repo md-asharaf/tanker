@@ -5,6 +5,7 @@ import { GAME_CONFIG } from '../gameConfig';
 import { getTerrainHeight, getTerrainAngle } from '../scene/Terrain';
 import { ballisticPositions, secureRandom } from '../../utils/math';
 import { AudioManager } from '../../audio/AudioManager';
+import { useGameStore } from '../gameStore';
 import type { KeyState } from '../../controls/useKeyboard';
 
 const CFG = GAME_CONFIG;
@@ -51,6 +52,10 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
     const rightWheelsRef = useRef<THREE.Group>(null);
     const exhaustRef = useRef<THREE.Group>(null);
     const antennaRef = useRef<THREE.Group>(null);
+    const streakAuraRef = useRef<THREE.Group>(null);
+    const trackDustRef = useRef<THREE.Group>(null);
+
+    const streak = useGameStore((s) => s.streak);
 
     // High-frequency physics & position state
     const velocity = useRef(0);
@@ -165,21 +170,22 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
         }
       };
 
-      const isIgnoredTarget = (target: HTMLElement | null, clientY: number) => {
+      const isIgnoredTarget = (target: HTMLElement | null) => {
         return Boolean(
           target?.closest?.('.options-tray') ||
           target?.closest?.('.control-bar') ||
           target?.closest?.('.top-utility-bar') ||
           target?.closest?.('.desktop-fire-container') ||
           target?.closest?.('.mobile-controls') ||
-          target?.closest?.('button') ||
-          clientY > window.innerHeight - 70
+          target?.closest?.('.score-panel') ||
+          target?.closest?.('.arcade-question-header') ||
+          target?.closest?.('button')
         );
       };
 
       const onPointerDown = (e: PointerEvent) => {
         if (paused) return;
-        if (isIgnoredTarget(e.target as HTMLElement | null, e.clientY)) return;
+        if (isIgnoredTarget(e.target as HTMLElement | null)) return;
         isAimDragging.current = true;
         updateAimFromPointer(e.clientX, e.clientY);
       };
@@ -297,10 +303,21 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
         }
       }
 
-      // Antenna spring wiggle
-      if (antennaRef.current) {
-        const targetWiggle = (velocity.current / maxSpeed) * 0.35 + Math.sin(Date.now() * 0.01) * 0.08;
-        antennaRef.current.rotation.z = THREE.MathUtils.lerp(antennaRef.current.rotation.z, targetWiggle, dt * 10);
+      // Streak Combat Energy Aura Animation
+      if (streakAuraRef.current) {
+        streakAuraRef.current.rotation.y += dt * 3.0;
+        const auraPulse = 1.0 + Math.sin(Date.now() * 0.008) * 0.06;
+        streakAuraRef.current.scale.set(auraPulse, auraPulse, auraPulse);
+      }
+
+      // Track dust kick-up particles when driving
+      if (trackDustRef.current) {
+        const isDriving = Math.abs(velocity.current) > 0.4;
+        trackDustRef.current.visible = isDriving;
+        if (isDriving) {
+          const dustPuff = 0.8 + Math.sin(Date.now() * 0.03) * 0.35;
+          trackDustRef.current.scale.set(dustPuff, dustPuff, dustPuff);
+        }
       }
 
       // Trajectory preview in 3D (100% matches barrel, projectile, and stops at enemy tank!)
@@ -422,6 +439,45 @@ export const PlayerTank = forwardRef<PlayerTankHandle, Props>(
               <meshBasicMaterial color="#ffffff" transparent opacity={0.65} />
             </mesh>
           </group>
+
+          {/* Track Dust Kick-Up Particles */}
+          <group ref={trackDustRef} visible={false}>
+            <mesh position={[1.22, -0.42, 1.95]}>
+              <dodecahedronGeometry args={[0.32, 0]} />
+              <meshLambertMaterial color="#6e5d4e" transparent opacity={0.65} />
+            </mesh>
+            <mesh position={[-1.22, -0.42, 1.95]}>
+              <dodecahedronGeometry args={[0.32, 0]} />
+              <meshLambertMaterial color="#6e5d4e" transparent opacity={0.65} />
+            </mesh>
+          </group>
+
+          {/* Streak Power Aura (Energy Torus Rings & Point Light) */}
+          {streak >= 2 && (
+            <group ref={streakAuraRef} position={[0, 0.35, 0]}>
+              <mesh rotation={[Math.PI / 2, 0, 0]}>
+                <torusGeometry args={[2.4, 0.08, 10, 28]} />
+                <meshBasicMaterial
+                  color={streak >= 5 ? '#ff1744' : streak >= 3 ? '#ffd700' : '#00e5ff'}
+                  transparent
+                  opacity={0.85}
+                />
+              </mesh>
+              <mesh rotation={[Math.PI / 2, 0, Math.PI / 4]}>
+                <torusGeometry args={[2.1, 0.05, 8, 24]} />
+                <meshBasicMaterial
+                  color={streak >= 5 ? '#ff9100' : streak >= 3 ? '#fff176' : '#80d8ff'}
+                  transparent
+                  opacity={0.65}
+                />
+              </mesh>
+              <pointLight
+                color={streak >= 5 ? '#ff1744' : streak >= 3 ? '#ffd700' : '#00e5ff'}
+                intensity={1.4}
+                distance={12}
+              />
+            </group>
+          )}
         </group>
 
         {/* ── 3D ROUNDED TURRET ── */}

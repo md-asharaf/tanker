@@ -501,7 +501,8 @@ function ResponsiveCamera({
     const aspect = size.width / Math.max(1, size.height);
     const isPortrait = aspect < 1.0;
 
-    const targetFov = isPortrait ? 54 : 44;
+    // Dynamic FOV to ensure all 4 ridges (-18 to +18) fit on narrow mobile screens (375px - 430px)
+    const targetFov = isPortrait ? Math.max(54, Math.min(66, 38 / aspect)) : 44;
     const playerPos = playerRef.current?.getPosition() ?? new THREE.Vector3(0, 0.5, 10.0);
 
     const cam = camera as THREE.PerspectiveCamera;
@@ -517,8 +518,8 @@ function ResponsiveCamera({
 
     // Camera tracks 1:1 with player on X to keep tank DEAD-CENTERED horizontally at all times
     const targetCamX = playerPos.x + shakeX;
-    const targetCamY = isPortrait ? playerPos.y + 9.5 + shakeY : playerPos.y + 6.5 + shakeY;
-    const targetCamZ = isPortrait ? playerPos.z + 16.0 : playerPos.z + 12.5;
+    const targetCamY = isPortrait ? playerPos.y + 10.5 + shakeY : playerPos.y + 6.5 + shakeY;
+    const targetCamZ = isPortrait ? playerPos.z + 18.0 : playerPos.z + 12.5;
 
     cam.position.x = THREE.MathUtils.lerp(cam.position.x, targetCamX, 0.12);
     cam.position.y = THREE.MathUtils.lerp(cam.position.y, targetCamY, 0.12);
@@ -526,8 +527,8 @@ function ResponsiveCamera({
 
     // Camera looks directly forward from player position across the 4 front ridges
     const lookTargetX = playerPos.x;
-    const lookTargetY = isPortrait ? playerPos.y + 3.2 : playerPos.y + 2.4;
-    const lookTargetZ = isPortrait ? playerPos.z - 26.0 : playerPos.z - 24.0;
+    const lookTargetY = isPortrait ? playerPos.y + 3.0 : playerPos.y + 2.4;
+    const lookTargetZ = isPortrait ? playerPos.z - 28.0 : playerPos.z - 24.0;
 
     cam.lookAt(lookTargetX, lookTargetY, lookTargetZ);
   });

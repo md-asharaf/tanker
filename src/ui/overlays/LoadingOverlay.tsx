@@ -41,11 +41,11 @@ export function LoadingOverlay() {
     <div className="overlay overlay--dim">
       <div className="overlay-card anim-slide-up" style={{ width: 'min(92vw, 540px)', padding: '36px 32px' }}>
         {/* Game Logo & Branding */}
-        <div style={{ marginBottom: 24 }}>
+        <div style={{ marginBottom: 22, textAlign: 'center' }}>
           <div
             style={{
               fontFamily: 'var(--font-heading)',
-              fontSize: 'clamp(28px, 6.5vw, 44px)',
+              fontSize: 'clamp(30px, 7vw, 46px)',
               fontWeight: 900,
               color: 'var(--col-gold)',
               letterSpacing: '0.14em',
@@ -53,7 +53,18 @@ export function LoadingOverlay() {
               lineHeight: 1.1,
             }}
           >
-            TANK TRIVIA
+            TANKER 3D
+          </div>
+          <div
+            style={{
+              fontSize: 11,
+              fontFamily: 'var(--font-heading)',
+              color: '#94a3b8',
+              letterSpacing: '0.22em',
+              marginTop: 6,
+            }}
+          >
+            TACTICAL BALLISTIC TRIVIA
           </div>
         </div>
 
@@ -66,52 +77,59 @@ export function LoadingOverlay() {
                 border: '1.5px solid rgba(255, 213, 79, 0.35)',
                 borderRadius: 16,
                 padding: '14px 18px',
-                marginBottom: 22,
+                marginBottom: 20,
                 textAlign: 'center',
               }}
             >
               <div style={{ fontSize: 10, fontFamily: 'var(--font-heading)', color: '#94a3b8', letterSpacing: '0.15em', marginBottom: 4 }}>
-                GAME OBJECTIVE
+                TACTICAL MISSION
               </div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#f8fafc', lineHeight: 1.4 }}>
-                Calculate ballistic angles, aim 360°, and destroy the correct enemy tank!
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc', lineHeight: 1.45 }}>
+                Read the trivia question, hold & drag to aim your 3D cannon, and blast the correct enemy tank on the ridge!
               </div>
             </div>
 
-            {/* Controls Guide (Desktop only) */}
+            {/* Controls Guide */}
             <div
               className="desktop-controls-guide"
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(3, 1fr)',
                 gap: 10,
-                marginBottom: 26,
+                marginBottom: 24,
               }}
             >
               <div className="control-guide-card">
-                <div style={{ fontSize: 20, marginBottom: 4 }}>🎯</div>
-                <div className="guide-title">AIM</div>
-                <div className="guide-desc">Move Cursor (360°)</div>
+                <div style={{ fontSize: 22, marginBottom: 4 }}>🎯</div>
+                <div className="guide-title">HOLD & DRAG</div>
+                <div className="guide-desc">Aim Cannon Arc</div>
               </div>
               <div className="control-guide-card">
-                <div style={{ fontSize: 20, marginBottom: 4 }}>💥</div>
-                <div className="guide-title">FIRE</div>
-                <div className="guide-desc">Click / Spacebar</div>
+                <div style={{ fontSize: 22, marginBottom: 4 }}>💥</div>
+                <div className="guide-title">FIRE BUTTON</div>
+                <div className="guide-desc">Shoot / Spacebar</div>
               </div>
               <div className="control-guide-card">
-                <div style={{ fontSize: 20, marginBottom: 4 }}>🚗</div>
-                <div className="guide-title">DRIVE</div>
-                <div className="guide-desc">A / D Keys</div>
+                <div style={{ fontSize: 22, marginBottom: 4 }}>◀ ▶</div>
+                <div className="guide-title">A / D KEYS</div>
+                <div className="guide-desc">Drive Ridge Road</div>
               </div>
             </div>
 
-            {/* Play Button */}
+            {/* Deploy Play Button */}
             <button
               className="btn btn--primary btn--start"
               onClick={handlePlayClick}
-              aria-label="Play Game"
+              aria-label="Deploy to Battle"
+              style={{
+                width: '100%',
+                padding: '16px 24px',
+                fontSize: 16,
+                letterSpacing: '0.12em',
+                boxShadow: '0 0 30px rgba(255, 213, 79, 0.45)',
+              }}
             >
-              ▶ PLAY GAME
+              ▶ DEPLOY TO BATTLE
             </button>
           </div>
         ) : (

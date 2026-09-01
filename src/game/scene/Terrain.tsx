@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { GAME_CONFIG } from '../gameConfig';
 
@@ -93,13 +94,13 @@ export function Terrain() {
     const colors: number[] = [];
 
     // ── AAA Realistic Battlefield Palette ──
-    const cGrassSun     = new THREE.Color('#7a8d56'); // Sunlit golden-green grass
-    const cGrassMuted   = new THREE.Color('#5e7045'); // Natural meadow steppe
-    const cGrassDeep    = new THREE.Color('#465433'); // Valley shade green
-    const cDirtRoad     = new THREE.Color('#675747'); // Compacted dirt road
-    const cDirtRuts     = new THREE.Color('#4e3f32'); // Wheel track grooves
-    const cRockOutcrop  = new THREE.Color('#5f6d77'); // Slate cliff rock
-    const cRockPeak     = new THREE.Color('#7a8891'); // Hilltop limestone gravel
+    const cGrassSun = new THREE.Color('#7a8d56'); // Sunlit golden-green grass
+    const cGrassMuted = new THREE.Color('#5e7045'); // Natural meadow steppe
+    const cGrassDeep = new THREE.Color('#465433'); // Valley shade green
+    const cDirtRoad = new THREE.Color('#675747'); // Compacted dirt road
+    const cDirtRuts = new THREE.Color('#4e3f32'); // Wheel track grooves
+    const cRockOutcrop = new THREE.Color('#5f6d77'); // Slate cliff rock
+    const cRockPeak = new THREE.Color('#7a8891'); // Hilltop limestone gravel
     const cMountainRock = new THREE.Color('#384652'); // Distant alpine slate rock
     const cMountainSnow = new THREE.Color('#dde7f0'); // Crisp mountain snow crags
 
@@ -263,8 +264,17 @@ function WoodenFence({ position }: { position: [number, number, number] }) {
 }
 
 function RealisticPineTree({ position, scale = 1 }: { position: [number, number, number]; scale?: number }) {
+  const treeRef = useRef<THREE.Group>(null);
+
+  useFrame(() => {
+    if (treeRef.current) {
+      const wind = Math.sin(Date.now() * 0.0018 + position[0] * 0.5) * 0.025;
+      treeRef.current.rotation.z = wind;
+    }
+  });
+
   return (
-    <group position={position} scale={scale}>
+    <group ref={treeRef} position={position} scale={scale}>
       <mesh position={[0, 0.8, 0]} castShadow>
         <cylinderGeometry args={[0.16, 0.24, 1.6, 6]} />
         <meshLambertMaterial color="#382a22" />
@@ -286,8 +296,17 @@ function RealisticPineTree({ position, scale = 1 }: { position: [number, number,
 }
 
 function RealisticOakTree({ position, scale = 1 }: { position: [number, number, number]; scale?: number }) {
+  const oakRef = useRef<THREE.Group>(null);
+
+  useFrame(() => {
+    if (oakRef.current) {
+      const wind = Math.sin(Date.now() * 0.0015 + position[0] * 0.6) * 0.028;
+      oakRef.current.rotation.z = wind;
+    }
+  });
+
   return (
-    <group position={position} scale={scale}>
+    <group ref={oakRef} position={position} scale={scale}>
       <mesh position={[0, 1.0, 0]} castShadow>
         <cylinderGeometry args={[0.2, 0.28, 2.0, 6]} />
         <meshLambertMaterial color="#382a22" />

@@ -287,11 +287,6 @@ function ScreenVignette() {
 // ─────────────────────────────────────────────────────────────────
 export default function App() {
   const sceneRef = useRef<GameSceneHandle>(null);
-  const { startNewGame } = useGameStore();
-
-  useEffect(() => {
-    startNewGame();
-  }, [startNewGame]);
 
   const handleFire = useCallback(() => {
     sceneRef.current?.triggerFire();
