@@ -9,9 +9,9 @@ export function QuestionPanel() {
 
   if (!visible || !questions.length) return null;
 
-  const q     = questions[currentQuestionIndex];
+  const q = questions[currentQuestionIndex];
   const total = questions.length;
-  const num   = currentQuestionIndex + 1;
+  const num = currentQuestionIndex + 1;
 
   return (
     <div className="arcade-question-header">
@@ -19,8 +19,8 @@ export function QuestionPanel() {
         <span className="q-tag">Q {String(num).padStart(2, '0')}</span>
         <span className="q-total">/ {total}</span>
       </div>
-      <div className="arcade-question-prompt">
-        {q.prompt}
+      <div className="arcade-question-question">
+        {q.question}
       </div>
     </div>
   );

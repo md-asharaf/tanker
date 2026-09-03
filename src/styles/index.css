@@ -149,7 +149,7 @@ html, body, #root {
   color: rgba(15, 23, 42, 0.75);
 }
 
-.arcade-question-prompt {
+.arcade-question-question {
   font-size: clamp(13px, 1.8vw, 17px);
   font-weight: 800;
   color: #ffffff;
@@ -897,7 +897,7 @@ html, body, #root {
     align-self: flex-start;
     padding: 3px 8px;
   }
-  .arcade-question-prompt {
+  .arcade-question-question {
     font-size: 15px;
     font-weight: 700;
     line-height: 1.35;

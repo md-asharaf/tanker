@@ -42,7 +42,7 @@ export interface TankTarget {
 
 /** Normalized quiz question */
 export interface QuizQuestion {
-  prompt: string;
+  question: string;
   hint: string;
   options: string[];
   answer: string;

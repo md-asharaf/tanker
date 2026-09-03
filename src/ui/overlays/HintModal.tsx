@@ -26,9 +26,9 @@ export function HintModal() {
           💡 HINT
         </div>
 
-        {q?.prompt && (
+        {q?.question && (
           <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 12, fontWeight: 600 }}>
-            Question: <span style={{ color: '#ffffff', fontWeight: 800 }}>"{q.prompt}"</span>
+            Question: <span style={{ color: '#ffffff', fontWeight: 800 }}>"{q.question}"</span>
           </div>
         )}
 
