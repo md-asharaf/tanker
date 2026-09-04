@@ -37,8 +37,6 @@ jobs:
         run: npm ci
 
       - name: Build project
-        env:
-          VITE_QUIZ_API_URL: ${{ secrets.VITE_QUIZ_API_URL || 'https://n765v09mbd.execute-api.ap-south-1.amazonaws.com/projects/0021bbee-33c6-4346-9e4e-bb52a97b99e6/quiz' }}
         run: npm run build
 
       - name: Setup Pages
